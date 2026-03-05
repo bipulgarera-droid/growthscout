@@ -68,8 +68,7 @@ export const searchRankings = async (
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify([{
-                keyword: keyword,
-                location_name: city,
+                keyword: `${keyword} in ${city}`,
                 language_code: 'en',
                 depth: depth,
                 device: 'desktop',

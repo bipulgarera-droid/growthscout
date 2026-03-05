@@ -57,7 +57,40 @@ export const searchRankings = async (
 
     console.log(`[RankTracker] Searching DataForSEO: "${keyword}" in "${city}" (depth: ${depth})`);
 
+    // Resolve city to GPS coordinates for DataForSEO Maps API
+    let location_coordinate: string | undefined = undefined;
+    try {
+        console.log(`[RankTracker] Geocoding city: "${city}"`);
+        const geocodeReq = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(city)}&format=json&limit=1`, {
+            headers: { 'User-Agent': 'GrowthScout-CRM/1.0' }
+        });
+        const geocodeData = await geocodeReq.json();
+
+        if (geocodeData && geocodeData.length > 0) {
+            const { lat, lon } = geocodeData[0];
+            location_coordinate = `${lat},${lon},15z`;
+            console.log(`[RankTracker] Resolved coordinates: ${location_coordinate}`);
+        } else {
+            console.warn(`[RankTracker] Could not geocode "${city}", falling back to keyword search`);
+        }
+    } catch (err) {
+        console.error(`[RankTracker] Geocoding error:`, err);
+    }
+
     const authHeader = 'Basic ' + Buffer.from(`${DATAFORSEO_LOGIN}:${DATAFORSEO_PASSWORD}`).toString('base64');
+
+    const searchPayload: any = {
+        keyword: keyword,
+        language_code: 'en',
+        depth: depth,
+        device: 'desktop',
+    };
+
+    if (location_coordinate) {
+        searchPayload.location_coordinate = location_coordinate;
+    } else {
+        searchPayload.keyword = `${keyword} in ${city}`; // Fallback if geocoding fails
+    }
 
     const response = await fetch(
         'https://api.dataforseo.com/v3/serp/google/maps/live/advanced',
@@ -67,12 +100,7 @@ export const searchRankings = async (
                 'Authorization': authHeader,
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify([{
-                keyword: `${keyword} in ${city}`,
-                language_code: 'en',
-                depth: depth,
-                device: 'desktop',
-            }])
+            body: JSON.stringify([searchPayload])
         }
     );
 

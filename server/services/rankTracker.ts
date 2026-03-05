@@ -68,7 +68,7 @@ export const searchRankings = async (
 
         if (geocodeData && geocodeData.length > 0) {
             const { lat, lon } = geocodeData[0];
-            location_coordinate = `${lat},${lon},15z`;
+            location_coordinate = `${lat},${lon},12z`; // Wider zoom level to capture the whole city
             console.log(`[RankTracker] Resolved coordinates: ${location_coordinate}`);
         } else {
             console.warn(`[RankTracker] Could not geocode "${city}", falling back to keyword search`);
@@ -84,6 +84,7 @@ export const searchRankings = async (
         language_code: 'en',
         depth: depth,
         device: 'desktop',
+        search_this_area: true // Forces searching the whole area
     };
 
     if (location_coordinate) {

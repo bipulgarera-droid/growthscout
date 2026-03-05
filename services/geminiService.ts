@@ -1,10 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { WebsiteAudit, Business } from "../types";
 
-// Use GEMINI_API_KEY from .env (matches vite.config.ts define)
-const apiKey = (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY)
-  || (import.meta as any).env?.GEMINI_API_KEY
-  || '';
+// Use VITE_GEMINI_API_KEY from .env for frontend access
+const apiKey = import.meta.env?.VITE_GEMINI_API_KEY || '';
 
 if (!apiKey) {
   console.warn('WARNING: GEMINI_API_KEY is not set. Audit features will not work.');

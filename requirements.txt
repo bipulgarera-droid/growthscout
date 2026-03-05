@@ -1,0 +1,20 @@
+# GrowthScout CRM - Python Dependencies
+# For execution scripts (lead pipeline, Telegram bot)
+
+# Telegram Bot
+python-telegram-bot==21.0
+
+# Apify for lead scraping
+apify-client==1.6.0
+
+# Google AI (Gemini)
+google-generativeai==0.3.2
+
+# HTTP requests
+requests==2.31.0
+
+# Environment variables
+python-dotenv==1.0.0
+
+# Async support
+aiohttp==3.9.1

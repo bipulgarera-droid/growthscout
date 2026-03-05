@@ -1,0 +1,25 @@
+node_modules
+server/node_modules
+.git
+.env
+server/.env
+.env.pipeline
+.env.local
+credentials.json
+server/credentials.json
+token.json
+server/token.json
+.tmp
+server/.tmp
+server/.puppeteer_tmp
+.npm-cache
+.venv
+.DS_Store
+*.mp4
+dist
+README.md
+GEMINI.md
+directives
+execution
+markdown files for ref
+med spa website template 1

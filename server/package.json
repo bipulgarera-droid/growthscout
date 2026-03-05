@@ -1,0 +1,27 @@
+{
+    "name": "growthscout-crm-server",
+    "version": "1.0.0",
+    "description": "Backend services for GrowthScout CRM",
+    "main": "index.ts",
+    "type": "module",
+    "scripts": {
+        "start": "tsx index.ts",
+        "dev": "nodemon --exec tsx index.ts"
+    },
+    "dependencies": {
+        "cors": "^2.8.5",
+        "dotenv": "^16.4.7",
+        "express": "^4.21.2",
+        "googleapis": "^144.0.0",
+        "puppeteer": "^24.1.1"
+    },
+    "devDependencies": {
+        "@types/cors": "^2.8.17",
+        "@types/express": "^5.0.0",
+        "@types/node": "^22.10.7",
+        "nodemon": "^3.1.9",
+        "ts-node": "^10.9.2",
+        "tsx": "^4.21.0",
+        "typescript": "^5.7.3"
+    }
+}

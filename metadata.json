@@ -1,0 +1,8 @@
+{
+  "name": "GrowthScout CRM",
+  "description": "AI-powered business scraper, CRM, website analyzer, and proposal generator.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

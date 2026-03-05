@@ -40,7 +40,7 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 WORKDIR /app
 
-# Copy package files and install production deps only
+# Copy package files and install all deps (tsx is in dependencies now)
 COPY package.json package-lock.json* ./
 RUN npm install --omit=dev
 
@@ -51,9 +51,6 @@ COPY --from=builder /app/dist ./dist
 COPY server/ ./server/
 COPY tsconfig.json ./
 
-# Install tsx for running TypeScript in production
-RUN npm install tsx
-
-EXPOSE ${PORT:-5001}
+EXPOSE 8080
 
 CMD ["node", "--import", "tsx", "server/index.ts"]

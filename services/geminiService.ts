@@ -1,70 +1,50 @@
-import { GoogleGenAI, Type } from "@google/genai";
 import { WebsiteAudit, Business } from "../types";
 
 // Use VITE_GEMINI_API_KEY from .env for frontend access
 const apiKey = import.meta.env?.VITE_GEMINI_API_KEY || '';
 
 if (!apiKey) {
-  console.warn('WARNING: GEMINI_API_KEY is not set. Audit features will not work.');
+  console.warn('WARNING: VITE_GEMINI_API_KEY is not set. Audit features will not work.');
 }
 
-const ai = new GoogleGenAI({ apiKey });
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 // 1. Audit Screenshot for Design Flaws
 export const analyzeDesignQuality = async (base64Image: string): Promise<WebsiteAudit> => {
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: {
-        parts: [
-          { inlineData: { data: base64Image, mimeType: 'image/jpeg' } },
-          {
-            text: `Act as a harsh UI/UX Critic and Sales Qualifier for a Web Design Agency.
-            Analyze this website screenshot.
-            
-            Determine if this lead is "Qualified" (i.e., the design is bad/outdated, giving us an opportunity to sell a redesign).
-            
-            Return JSON:
-            - isBadDesign: boolean (true if outdated, non-responsive, ugly, or poor UX)
-            - qualificationReason: string (e.g., "Qualified: Site looks like it was built in 2010, likely losing customers.")
-            - designFlaws: string[] (List 3 specific visual/UX failures)
-            - brandAssetsDetected: string[] (List colors/elements seen, e.g., "Red and Black palette", "Serif logo")
-            - summary: string (Professional summary of the audit)
-            - actionItems: array of objects { title, description, priority (High/Medium), costEstimate, expectedImpact, category (Design/Conversion) }
-              (Focus action items on how a REDESIGN would fix money problems, e.g., "Mobile Responsive Redesign" -> "Capture 50% more mobile traffic")`
-          }
-        ]
-      },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            isBadDesign: { type: Type.BOOLEAN },
-            qualificationReason: { type: Type.STRING },
-            designFlaws: { type: Type.ARRAY, items: { type: Type.STRING } },
-            brandAssetsDetected: { type: Type.ARRAY, items: { type: Type.STRING } },
-            summary: { type: Type.STRING },
-            actionItems: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  title: { type: Type.STRING },
-                  description: { type: Type.STRING },
-                  priority: { type: Type.STRING, enum: ["High", "Medium", "Low"] },
-                  costEstimate: { type: Type.STRING },
-                  expectedImpact: { type: Type.STRING },
-                  category: { type: Type.STRING, enum: ["Design", "SEO", "Conversion", "Brand"] }
-                }
-              }
+    const response = await fetch(`${GEMINI_API_BASE}/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { inlineData: { data: base64Image, mimeType: 'image/jpeg' } },
+            {
+              text: `Act as a harsh UI/UX Critic and Sales Qualifier for a Web Design Agency.
+              Analyze this website screenshot.
+              
+              Determine if this lead is "Qualified" (i.e., the design is bad/outdated, giving us an opportunity to sell a redesign).
+              
+              Return JSON:
+              - isBadDesign: boolean (true if outdated, non-responsive, ugly, or poor UX)
+              - qualificationReason: string (e.g., "Qualified: Site looks like it was built in 2010, likely losing customers.")
+              - designFlaws: string[] (List 3 specific visual/UX failures)
+              - brandAssetsDetected: string[] (List colors/elements seen, e.g., "Red and Black palette", "Serif logo")
+              - summary: string (Professional summary of the audit)
+              - actionItems: array of objects { title, description, priority (High/Medium), costEstimate, expectedImpact, category (Design/Conversion) }
+                (Focus action items on how a REDESIGN would fix money problems, e.g., "Mobile Responsive Redesign" -> "Capture 50% more mobile traffic")`
             }
-          }
+          ]
+        }],
+        generationConfig: {
+          responseMimeType: "application/json"
         }
-      }
+      })
     });
 
-    if (response.text) return JSON.parse(response.text) as WebsiteAudit;
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (text) return JSON.parse(text) as WebsiteAudit;
     throw new Error("No response from AI");
   } catch (error) {
     console.error("Design analysis failed", error);
@@ -75,27 +55,28 @@ export const analyzeDesignQuality = async (base64Image: string): Promise<Website
 // 2. Find Contacts (Enrichment)
 export const findContactInfo = async (businessName: string, location: string) => {
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash', // Use Flash 2.5 for speed and search tools
-      contents: `Find the official Instagram profile URL, LinkedIn company page URL, and a public contact email for "${businessName}" located in "${location}".
-      
-      If you find them, extract the direct links.
-      Return JSON only: { instagram: string | null, linkedin: string | null, email: string | null }`,
-      config: {
+    const response = await fetch(`${GEMINI_API_BASE}/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{
+            text: `Find the official Instagram profile URL, LinkedIn company page URL, and a public contact email for "${businessName}" located in "${location}".
+            
+            If you find them, extract the direct links.
+            Return JSON only: { instagram: string | null, linkedin: string | null, email: string | null }`
+          }]
+        }],
         tools: [{ googleSearch: {} }],
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            instagram: { type: Type.STRING, nullable: true },
-            linkedin: { type: Type.STRING, nullable: true },
-            email: { type: Type.STRING, nullable: true }
-          }
+        generationConfig: {
+          responseMimeType: "application/json"
         }
-      }
+      })
     });
 
-    if (response.text) return JSON.parse(response.text);
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (text) return JSON.parse(text);
     return { instagram: null, linkedin: null, email: null };
   } catch (error) {
     console.error("Enrichment failed", error);
@@ -106,28 +87,29 @@ export const findContactInfo = async (businessName: string, location: string) =>
 // 2b. Find Founder (Specific Enrichment)
 export const findFounderInfo = async (businessName: string, location: string) => {
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: `Who is the owner or founder of "${businessName}" in "${location}"?
-      Find their name, their personal LinkedIn profile URL (or the business LinkedIn), and a contact email.
-      
-      Return JSON:
-      { founderName: string | null, linkedin: string | null, email: string | null }`,
-      config: {
+    const response = await fetch(`${GEMINI_API_BASE}/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{
+            text: `Who is the owner or founder of "${businessName}" in "${location}"?
+            Find their name, their personal LinkedIn profile URL (or the business LinkedIn), and a contact email.
+            
+            Return JSON:
+            { founderName: string | null, linkedin: string | null, email: string | null }`
+          }]
+        }],
         tools: [{ googleSearch: {} }],
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            founderName: { type: Type.STRING, nullable: true },
-            linkedin: { type: Type.STRING, nullable: true },
-            email: { type: Type.STRING, nullable: true }
-          }
+        generationConfig: {
+          responseMimeType: "application/json"
         }
-      }
+      })
     });
 
-    if (response.text) return JSON.parse(response.text);
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (text) return JSON.parse(text);
     return { founderName: null, linkedin: null, email: null };
   } catch (error) {
     console.error("Founder enrichment failed", error);
@@ -149,41 +131,45 @@ interface StyleGuide {
 }
 
 const generateStyleGuide = async (base64: string, businessType: string, style: string, mimeType: string = 'image/png'): Promise<StyleGuide> => {
-  const promptResponse = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: {
-      parts: [
-        { inlineData: { data: base64, mimeType: mimeType } },
-        {
-          text: `You are a world-class Design Director (The Architect).
-          
-          Goal: Perform a surgical analysis of the brand DNA in the provided screenshot.
-          
-          Input Context:
-          - Business Type: ${businessType}
-          - Target Style: ${style}
-          
-          TASK: Extract the exact literal strings and visual assets.
-          
-          OUTPUT: A valid JSON object ONLY.
-          
-          Structure:
+  const promptResponse = await fetch(`${GEMINI_API_BASE}/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          { inlineData: { data: base64, mimeType: mimeType } },
           {
-            "brandColors": ["#hex", "#hex"], 
-            "logoDescription": "PIXEL-LEVEL visual description of the logo icon/graphic.",
-            "logoText": "The ABSOLUTELY EXACT string of text in the logo (e.g. 'VINTAGE ROCK HAIR STUDIO'). Check for case sensitivity.",
-            "typography": "The font family and weight used in the original logo and hero.",
-            "visualStyle": "Keywords (e.g. 'Retro-Modern', 'High-Contrast').",
-            "keyImagery": "EXTREMLY DETAILED description of the specific hero image/person (e.g. 'Retro-styled woman with red lipstick, looking through her fingers, sepia tone').",
-            "serviceList": ["Service 1", "Service 2"], (Extract EVERY single service name found in the navigation or service section. DO NOT SUMMARIZE. e.g. 'Spray Tanning', 'Massage Therapy').,
-            "masterPrompt": "A single paragraph describing the master layout strategy."
-          }`
-        }
-      ]
-    }
+            text: `You are a world-class Design Director (The Architect).
+            
+            Goal: Perform a surgical analysis of the brand DNA in the provided screenshot.
+            
+            Input Context:
+            - Business Type: ${businessType}
+            - Target Style: ${style}
+            
+            TASK: Extract the exact literal strings and visual assets.
+            
+            OUTPUT: A valid JSON object ONLY.
+            
+            Structure:
+            {
+              "brandColors": ["#hex", "#hex"], 
+              "logoDescription": "PIXEL-LEVEL visual description of the logo icon/graphic.",
+              "logoText": "The ABSOLUTELY EXACT string of text in the logo (e.g. 'VINTAGE ROCK HAIR STUDIO'). Check for case sensitivity.",
+              "typography": "The font family and weight used in the original logo and hero.",
+              "visualStyle": "Keywords (e.g. 'Retro-Modern', 'High-Contrast').",
+              "keyImagery": "EXTREMLY DETAILED description of the specific hero image/person (e.g. 'Retro-styled woman with red lipstick, looking through her fingers, sepia tone').",
+              "serviceList": ["Service 1", "Service 2"], (Extract EVERY single service name found in the navigation or service section. DO NOT SUMMARIZE. e.g. 'Spray Tanning', 'Massage Therapy').,
+              "masterPrompt": "A single paragraph describing the master layout strategy."
+            }`
+          }
+        ]
+      }]
+    })
   });
 
-  const text = promptResponse.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+  const data = await promptResponse.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
   try {
     const cleanJson = text.replace(/```json|```/g, '').trim();
     return JSON.parse(cleanJson);
@@ -236,13 +222,15 @@ export const generateRedesignPreview = async (
       imageParts.push({ inlineData: { data: belowFoldScreenshotBase64, mimeType: mimeType } });
     }
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-image-preview', // Nano Banana Pro (2K Quality)
-      contents: {
-        parts: [
-          ...imageParts,
-          {
-            text: `YOU ARE A WORLD-CLASS WEB DESIGNER creating a premium website redesign.
+    const response = await fetch(`${GEMINI_API_BASE}/gemini-3-pro-image-preview:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            ...imageParts,
+            {
+              text: `YOU ARE A WORLD-CLASS WEB DESIGNER creating a premium website redesign.
 
 BRAND DNA (EXTRACT FROM REFERENCE IMAGE - DO NOT CHANGE):
 - LOGO: ${styleGuide.logoDescription} with text "${styleGuide.logoText}"
@@ -292,19 +280,21 @@ CRITICAL RULES:
 - Style: ${styleGuide.visualStyle}
 
 OUTPUT: 2K resolution, vertical full-page website mockup.`
+            }
+          ]
+        }],
+        generationConfig: {
+          imageConfig: {
+            imageSize: "2K",
+            aspectRatio: modelAspectRatio
           }
-        ]
-      },
-      config: {
-        imageConfig: {
-          imageSize: "2K",
-          aspectRatio: modelAspectRatio
         }
-      }
+      })
     });
 
+    const data = await response.json();
     let generatedImage = "";
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
+    for (const part of data.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
         generatedImage = `data:image/png;base64,${part.inlineData.data}`;
         break;
@@ -326,9 +316,13 @@ OUTPUT: 2K resolution, vertical full-page website mockup.`
 // 4. Generate Outreach Message
 export const generateOutreachMessage = async (business: Business, audit: WebsiteAudit, platform: 'Email' | 'Instagram' | 'LinkedIn') => {
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `Write a short, punchy, high-converting cold outreach message for ${platform}.
+    const response = await fetch(`${GEMINI_API_BASE}/gemini-3-flash-preview:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{
+            text: `Write a short, punchy, high-converting cold outreach message for ${platform}.
       
       Sender: A premium web design agency.
       Recipient: "${business.name}" (Category: ${business.category}).
@@ -341,8 +335,16 @@ export const generateOutreachMessage = async (business: Business, audit: Website
       Tone: Professional, helpful, not spammy.
       Length: Short (under 100 words).
       `
+          }]
+        }],
+        generationConfig: {
+          temperature: 0.7
+        }
+      })
     });
-    return response.text || "Could not generate message.";
+
+    const data = await response.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || "Could not generate message.";
   } catch (error) {
     return "Error generating message.";
   }

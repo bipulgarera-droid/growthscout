@@ -19,36 +19,39 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // ============ STATIC FILE SERVING (PRODUCTION) ============
 const distPath = path.resolve(__dirname, '../dist');
-if (fs.existsSync(distPath)) {
+const isProduction = fs.existsSync(distPath);
+if (isProduction) {
     console.log('📦 Production mode: serving static files from dist/');
     app.use(express.static(distPath));
 }
 
-// Root route with helpful info
-app.get('/', (req, res) => {
-    const slidesAuthorized = isAuthorized();
-    res.send(`
-        <html>
-        <head><title>GrowthScout API</title><style>body{font-family:system-ui;padding:40px;max-width:600px;margin:0 auto}a{color:#2563eb}code{background:#f1f5f9;padding:2px 6px;border-radius:4px}.status{display:inline-block;padding:4px 12px;border-radius:99px;font-size:14px}.ok{background:#dcfce7;color:#166534}.pending{background:#fef3c7;color:#92400e}</style></head>
-        <body>
-            <h1>🚀 GrowthScout API</h1>
-            <h3>Status</h3>
-            <ul>
-                <li>Server: <span class="status ok">Running</span></li>
-                <li>Google Slides: <span class="status ${slidesAuthorized ? 'ok' : 'pending'}">${slidesAuthorized ? 'Authorized' : 'Not Authorized'}</span>
-                    ${!slidesAuthorized ? `<br><a href="/api/slides/auth-url">→ Click to get auth URL</a>` : ''}
-                </li>
-            </ul>
-            <h3>Endpoints</h3>
-            <ul>
-                <li><code>POST /api/screenshot</code> - Capture website screenshot</li>
-                <li><code>POST /api/slides</code> - Generate Google Slides proposal</li>
-                <li><code>POST /api/discover</code> - Discover businesses via Apify</li>
-            </ul>
-        </body>
-        </html>
-    `);
-});
+// Root route with helpful info (only in dev mode when no dist/ exists)
+if (!isProduction) {
+    app.get('/', (req, res) => {
+        const slidesAuthorized = isAuthorized();
+        res.send(`
+            <html>
+            <head><title>GrowthScout API</title><style>body{font-family:system-ui;padding:40px;max-width:600px;margin:0 auto}a{color:#2563eb}code{background:#f1f5f9;padding:2px 6px;border-radius:4px}.status{display:inline-block;padding:4px 12px;border-radius:99px;font-size:14px}.ok{background:#dcfce7;color:#166534}.pending{background:#fef3c7;color:#92400e}</style></head>
+            <body>
+                <h1>🚀 GrowthScout API</h1>
+                <h3>Status</h3>
+                <ul>
+                    <li>Server: <span class="status ok">Running</span></li>
+                    <li>Google Slides: <span class="status ${slidesAuthorized ? 'ok' : 'pending'}">${slidesAuthorized ? 'Authorized' : 'Not Authorized'}</span>
+                        ${!slidesAuthorized ? `<br><a href="/api/slides/auth-url">→ Click to get auth URL</a>` : ''}
+                    </li>
+                </ul>
+                <h3>Endpoints</h3>
+                <ul>
+                    <li><code>POST /api/screenshot</code> - Capture website screenshot</li>
+                    <li><code>POST /api/slides</code> - Generate Google Slides proposal</li>
+                    <li><code>POST /api/discover</code> - Discover businesses via Apify</li>
+                </ul>
+            </body>
+            </html>
+        `);
+    });
+}
 
 // Basic health check
 app.get('/api/health', (req, res) => {

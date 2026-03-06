@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Search, MapPin, ExternalLink, Plus, BarChart3, TrendingDown, Trophy, AlertTriangle } from 'lucide-react';
-import { searchRankings, RankedBusiness, RankSearchResult } from '../services/backendApi';
+import { searchRankings, saveRankings, getRankingHistory, RankedBusiness, RankSearchResult } from '../services/backendApi';
 import { Business } from '../types';
 
 interface RankTrackerProps {
@@ -16,9 +16,10 @@ const RankTracker: React.FC<RankTrackerProps> = ({ onAddLead, existingLeads }) =
     const [result, setResult] = useState<RankSearchResult | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [filterTier, setFilterTier] = useState<'all' | 'top' | 'mid' | 'low'>('all');
+    const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
 
-    const handleSearch = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSearch = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
         if (!keyword.trim() || !city.trim()) return;
 
         setIsSearching(true);
@@ -26,8 +27,30 @@ const RankTracker: React.FC<RankTrackerProps> = ({ onAddLead, existingLeads }) =
         setResult(null);
 
         try {
-            const data = await searchRankings(keyword.trim(), city.trim(), maxResults);
+            // Check history first
+            let data: RankSearchResult | null = null;
+            try {
+                const history = await getRankingHistory(keyword.trim(), city.trim());
+                if (history && history.results && history.results.length > 0) {
+                    data = history;
+                    console.log("Loaded from history", data.results.length);
+                }
+            } catch (historyErr) {
+                console.warn("Failed to load history, fetching new data...", historyErr);
+            }
+
+            if (!data) {
+                // Fetch fresh if no history
+                data = await searchRankings(keyword.trim(), city.trim(), maxResults);
+
+                // Fire and forget save to DB
+                saveRankings(keyword.trim(), city.trim(), data.results).catch(err => {
+                    console.error("Failed to background save rankings", err);
+                });
+            }
+
             setResult(data);
+            setSelectedLeads(new Set()); // Reset selections
         } catch (err: any) {
             setError(err.message || 'Search failed');
         } finally {
@@ -69,9 +92,9 @@ const RankTracker: React.FC<RankTrackerProps> = ({ onAddLead, existingLeads }) =
             phone: business.phone || '',
             website: business.website,
             status: 'new',
-            qualityScore: Math.max(20, 100 - business.rank), // Lower rank = higher opportunity score
+            qualityScore: Math.max(20, 100 - business.rank),
             digitalScore: 50,
-            seoScore: Math.max(10, 100 - (business.rank * 2)), // Rough SEO score based on rank
+            seoScore: Math.max(10, 100 - (business.rank * 2)),
             socialScore: 50,
             estimatedValue: 2000 + Math.floor(Math.random() * 3000),
             searchQuery: keyword,
@@ -79,6 +102,24 @@ const RankTracker: React.FC<RankTrackerProps> = ({ onAddLead, existingLeads }) =
         };
 
         onAddLead(newLead);
+    };
+
+    const handleBulkAdd = () => {
+        if (!result) return;
+        const toAdd = result.results.filter(r => selectedLeads.has(r.placeId || r.name));
+        toAdd.forEach(biz => {
+            if (!isAlreadyInPipeline(biz)) {
+                handleAddToPipeline(biz);
+            }
+        });
+        setSelectedLeads(new Set());
+    };
+
+    const toggleSelection = (id: string) => {
+        const newSet = new Set(selectedLeads);
+        if (newSet.has(id)) newSet.delete(id);
+        else newSet.add(id);
+        setSelectedLeads(newSet);
     };
 
     const filteredResults = result?.results.filter(r => {
@@ -150,21 +191,32 @@ const RankTracker: React.FC<RankTrackerProps> = ({ onAddLead, existingLeads }) =
                             <option value={700}>700</option>
                         </select>
                     </div>
-                    <button
-                        type="submit"
-                        disabled={isSearching || !keyword.trim() || !city.trim()}
-                        className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg font-medium text-sm hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
-                    >
-                        {isSearching ? (
-                            <span className="flex items-center gap-2">
-                                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                                </svg>
-                                Searching...
-                            </span>
-                        ) : 'Search Rankings'}
-                    </button>
+                    <div className="flex gap-2">
+                        <button
+                            type="button"
+                            onClick={handleBulkAdd}
+                            disabled={selectedLeads.size === 0}
+                            className="px-4 py-2.5 bg-slate-900 text-white rounded-lg font-medium text-sm hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center gap-2"
+                        >
+                            <Plus size={16} />
+                            Bulk Add ({selectedLeads.size})
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={isSearching || !keyword.trim() || !city.trim()}
+                            className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg font-medium text-sm hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                        >
+                            {isSearching ? (
+                                <span className="flex items-center gap-2">
+                                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                    </svg>
+                                    Searching...
+                                </span>
+                            ) : 'Search Rankings'}
+                        </button>
+                    </div>
                 </div>
             </form>
 
@@ -244,6 +296,26 @@ const RankTracker: React.FC<RankTrackerProps> = ({ onAddLead, existingLeads }) =
                         <table className="w-full">
                             <thead>
                                 <tr className="bg-slate-50 border-b border-slate-200">
+                                    <th className="text-center py-3 px-4 w-12">
+                                        <input
+                                            type="checkbox"
+                                            className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                                            checked={filteredResults.length > 0 && selectedLeads.size === filteredResults.filter(r => !isAlreadyInPipeline(r)).length}
+                                            onChange={(e) => {
+                                                if (e.target.checked) {
+                                                    const newSet = new Set<string>();
+                                                    filteredResults.forEach(r => {
+                                                        if (!isAlreadyInPipeline(r)) {
+                                                            newSet.add(r.placeId || r.name);
+                                                        }
+                                                    });
+                                                    setSelectedLeads(newSet);
+                                                } else {
+                                                    setSelectedLeads(new Set());
+                                                }
+                                            }}
+                                        />
+                                    </th>
                                     <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase w-20">Rank</th>
                                     <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase">Business</th>
                                     <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase w-24">Rating</th>
@@ -257,6 +329,15 @@ const RankTracker: React.FC<RankTrackerProps> = ({ onAddLead, existingLeads }) =
                                     const alreadyAdded = isAlreadyInPipeline(biz);
                                     return (
                                         <tr key={biz.placeId || `${biz.name}-${biz.rank}`} className="hover:bg-slate-50 transition-colors">
+                                            <td className="py-3 px-4 text-center">
+                                                <input
+                                                    type="checkbox"
+                                                    className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                                                    disabled={alreadyAdded}
+                                                    checked={selectedLeads.has(biz.placeId || biz.name)}
+                                                    onChange={() => toggleSelection(biz.placeId || biz.name)}
+                                                />
+                                            </td>
                                             <td className="py-3 px-4">
                                                 <span className={`inline-flex items-center justify-center w-10 h-7 rounded-md text-xs font-bold border ${getRankBadgeClasses(biz.rank)}`}>
                                                     #{biz.rank}

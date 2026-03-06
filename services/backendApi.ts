@@ -146,6 +146,40 @@ export const bulkAnalyze = async (leads: { id: string; url: string; name: string
     return data.results;
 };
 
+export const saveRankings = async (keyword: string, city: string, results: RankedBusiness[]): Promise<{ success: boolean; count: number }> => {
+    const response = await fetch(`${API_BASE}/rankings/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword, city, results })
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to save rankings');
+    }
+
+    return response.json();
+};
+
+export const getRankingHistory = async (keyword: string, city: string): Promise<RankSearchResult> => {
+    const params = new URLSearchParams({ keyword, city });
+    const response = await fetch(`${API_BASE}/rankings/history?${params.toString()}`);
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to load ranking history');
+    }
+
+    const data = await response.json();
+    return {
+        keyword,
+        city,
+        totalResults: data.results.length,
+        results: data.results,
+        searchedAt: new Date().toISOString()
+    };
+};
+
 // Bulk verify WhatsApp numbers
 export const bulkVerifyWhatsApp = async (leads: { id: string; phone: string; location?: string }[]): Promise<Record<string, boolean>> => {
     const response = await fetch(`${API_BASE}/pipeline/verify-whatsapp`, {

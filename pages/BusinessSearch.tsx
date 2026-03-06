@@ -668,8 +668,6 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
                     <option value="rank_desc">SEO Rank (100 to 1)</option>
                   </>
                 )}
-                <option value="rating_desc">Rating (High to Low)</option>
-                <option value="rating_asc">Rating (Low to High)</option>
                 <option value="reviews_desc">Reviews (Most to Least)</option>
                 <option value="reviews_asc">Reviews (Least to Most)</option>
               </select>

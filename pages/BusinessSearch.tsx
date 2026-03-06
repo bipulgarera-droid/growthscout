@@ -37,7 +37,7 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
   const [enrichingId, setEnrichingId] = useState<string | null>(null);
   const [searchCategory, setSearchCategory] = useState<string>(''); // Used to be Hair Salon, but empty is better for user flow
   const [searchSource, setSearchSource] = useState<'apify' | 'rank_tracker'>('apify');
-  const [sortBy, setSortBy] = useState<'default' | 'rank' | 'rating' | 'reviews'>('default');
+  const [sortBy, setSortBy] = useState<'default' | 'rank_asc' | 'rank_desc' | 'rating_desc' | 'rating_asc' | 'reviews_desc' | 'reviews_asc'>('default');
 
   // Selection State
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -508,16 +508,23 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
 
   // Apply Sorting
   const sortedResults = [...filteredResults].sort((a, b) => {
-    if (sortBy === 'rank') {
-      const rankA = a.rank ?? 999;
-      const rankB = b.rank ?? 999;
-      return rankA - rankB; // Ascending (1 is better than 10)
+    if (sortBy === 'rank_asc') {
+      return (a.rank ?? 999) - (b.rank ?? 999); // Ascending (1 to 100)
     }
-    if (sortBy === 'rating') {
-      return (b.rating || 0) - (a.rating || 0); // Descending (5 is better than 1)
+    if (sortBy === 'rank_desc') {
+      return (b.rank ?? -1) - (a.rank ?? -1); // Descending (100 to 1)
     }
-    if (sortBy === 'reviews') {
-      return (b.reviewCount || 0) - (a.reviewCount || 0); // Descending
+    if (sortBy === 'rating_desc') {
+      return (b.rating || 0) - (a.rating || 0); // Descending (5 to 1)
+    }
+    if (sortBy === 'rating_asc') {
+      return (a.rating || 0) - (b.rating || 0); // Ascending (1 to 5)
+    }
+    if (sortBy === 'reviews_desc') {
+      return (b.reviewCount || 0) - (a.reviewCount || 0); // Descending (Most to Least)
+    }
+    if (sortBy === 'reviews_asc') {
+      return (a.reviewCount || 0) - (b.reviewCount || 0); // Ascending (Least to Most)
     }
     return 0; // Default
   });
@@ -655,9 +662,16 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
                 className="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-brand-500 focus:border-brand-500 block p-2.5"
               >
                 <option value="default">Default</option>
-                {searchSource === 'rank_tracker' && <option value="rank">Rank (Low to High)</option>}
-                <option value="rating">Rating (Highest)</option>
-                <option value="reviews">Reviews (Most)</option>
+                {searchSource === 'rank_tracker' && (
+                  <>
+                    <option value="rank_asc">SEO Rank (1 to 100)</option>
+                    <option value="rank_desc">SEO Rank (100 to 1)</option>
+                  </>
+                )}
+                <option value="rating_desc">Rating (High to Low)</option>
+                <option value="rating_asc">Rating (Low to High)</option>
+                <option value="reviews_desc">Reviews (Most to Least)</option>
+                <option value="reviews_asc">Reviews (Least to Most)</option>
               </select>
             </div>
           </div>

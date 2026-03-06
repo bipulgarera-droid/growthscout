@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Users, Database, LayoutTemplate, Briefcase, BarChart3 } from 'lucide-react';
+import { Search, Database, BarChart3 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 const Sidebar = () => {
@@ -34,8 +34,6 @@ const Sidebar = () => {
         </div>
         <NavItem path="/" icon={Search} label="Business Search" />
         <NavItem path="/rankings" icon={BarChart3} label="Rank Tracker" />
-        <NavItem path="/leads" icon={Users} label="Lead Board" />
-        <NavItem path="/analyses" icon={LayoutTemplate} label="Analyses" />
       </nav>
     </div>
   );

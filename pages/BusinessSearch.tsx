@@ -10,6 +10,7 @@ interface BusinessSearchProps {
   results: Business[]; // From Global Store
   isSearching: boolean; // From Global Store
   onSearch: (query: string, location: string, count: number) => Promise<any>;
+  onRankSearch: (query: string, location: string, count: number) => Promise<any>;
   onUpdateResult: (id: string, data: Partial<Business>) => void;
   onInjectResult: (b: Business) => void;
   onClear: () => void;
@@ -24,6 +25,7 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
   results,
   isSearching,
   onSearch,
+  onRankSearch,
   onUpdateResult,
   onInjectResult,
   onClear,
@@ -34,6 +36,8 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
   const [resultCount, setResultCount] = useState(5);
   const [enrichingId, setEnrichingId] = useState<string | null>(null);
   const [searchCategory, setSearchCategory] = useState<string>(''); // Used to be Hair Salon, but empty is better for user flow
+  const [searchSource, setSearchSource] = useState<'apify' | 'rank_tracker'>('apify');
+  const [sortBy, setSortBy] = useState<'default' | 'rank' | 'rating' | 'reviews'>('default');
 
   // Selection State
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -341,7 +345,11 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
       : stateInput;
 
     try {
-      await onSearch(searchCategory, locationStr, resultCount);
+      if (searchSource === 'apify') {
+        await onSearch(searchCategory, locationStr, resultCount);
+      } else {
+        await onRankSearch(searchCategory, locationStr, resultCount);
+      }
       setSelectedIds(new Set()); // Reset selection on new search
     } catch (e) {
       // Error handled in App.tsx
@@ -398,7 +406,7 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
   // Selection Handlers
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      setSelectedIds(new Set(filteredResults.map(r => r.id)));
+      setSelectedIds(new Set(sortedResults.map(r => r.id)));
     } else {
       setSelectedIds(new Set());
     }
@@ -484,9 +492,25 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
     return true;
   });
 
+  // Apply Sorting
+  const sortedResults = [...filteredResults].sort((a, b) => {
+    if (sortBy === 'rank') {
+      const rankA = a.rank ?? 999;
+      const rankB = b.rank ?? 999;
+      return rankA - rankB; // Ascending (1 is better than 10)
+    }
+    if (sortBy === 'rating') {
+      return (b.rating || 0) - (a.rating || 0); // Descending (5 is better than 1)
+    }
+    if (sortBy === 'reviews') {
+      return (b.reviewCount || 0) - (a.reviewCount || 0); // Descending
+    }
+    return 0; // Default
+  });
+
   // Selection state (must be after filteredResults)
-  const allSelected = filteredResults.length > 0 && selectedIds.size === filteredResults.length;
-  const isIndeterminate = selectedIds.size > 0 && selectedIds.size < filteredResults.length;
+  const allSelected = sortedResults.length > 0 && selectedIds.size === sortedResults.length;
+  const isIndeterminate = selectedIds.size > 0 && selectedIds.size < sortedResults.length;
 
   // Count active filters
   const activeFilterCount =
@@ -533,13 +557,36 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
 
       {/* Search Card */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-8">
-        <div className="flex items-center gap-2 mb-6">
-          <div className="bg-brand-100 p-2 rounded-lg text-brand-600">
-            <MapPin size={24} />
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2">
+            <div className="bg-brand-100 p-2 rounded-lg text-brand-600">
+              <MapPin size={24} />
+            </div>
+            <div>
+              <h3 className="font-semibold text-lg">Prospecting Search</h3>
+              <p className="text-sm text-slate-500">Find businesses locally</p>
+            </div>
           </div>
-          <div>
-            <h3 className="font-semibold text-lg">Business Search</h3>
-            <p className="text-sm text-slate-500">Find businesses locally</p>
+
+          <div className="flex items-center bg-slate-100 p-1 rounded-lg">
+            <button
+              onClick={() => setSearchSource('apify')}
+              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${searchSource === 'apify'
+                ? 'bg-white text-brand-600 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+                }`}
+            >
+              Apify (Broad)
+            </button>
+            <button
+              onClick={() => setSearchSource('rank_tracker')}
+              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${searchSource === 'rank_tracker'
+                ? 'bg-white text-brand-600 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+                }`}
+            >
+              DataForSEO (Rank Target)
+            </button>
           </div>
         </div>
 
@@ -553,7 +600,7 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
             <input id="state-input" type="text" defaultValue="OH" className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-brand-500 outline-none" placeholder="State code" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Business Category</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Business Category / Keyword</label>
             <input
               id="category-input"
               type="text"
@@ -567,21 +614,36 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
 
         <div className="flex items-center justify-between border-t border-slate-100 pt-6">
           <div className="flex items-center gap-4 w-1/2">
-            <span className="text-sm font-medium text-slate-600">Max Results</span>
-            <select
-              value={resultCount}
-              onChange={(e) => setResultCount(Number(e.target.value))}
-              className="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-brand-500 focus:border-brand-500 block p-2.5"
-            >
-              <option value={3}>3 Results</option>
-              <option value={5}>5 Results</option>
-              <option value={10}>10 Results</option>
-              <option value={20}>20 Results</option>
-              <option value={50}>50 Results</option>
-              <option value={100}>100 Results</option>
-              <option value={200}>200 Results</option>
-              <option value={400}>400 Results (Slow)</option>
-            </select>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-slate-600">Max Results</span>
+              <select
+                value={resultCount}
+                onChange={(e) => setResultCount(Number(e.target.value))}
+                className="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-brand-500 focus:border-brand-500 block p-2.5"
+              >
+                <option value={3}>3 Results</option>
+                <option value={5}>5 Results</option>
+                <option value={10}>10 Results</option>
+                <option value={20}>20 Results</option>
+                <option value={50}>50 Results</option>
+                <option value={100}>100 Results</option>
+                <option value={200}>200 Results</option>
+                <option value={400}>400 Results (Slow)</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-slate-600">Sort By</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-brand-500 focus:border-brand-500 block p-2.5"
+              >
+                <option value="default">Default</option>
+                {searchSource === 'rank_tracker' && <option value="rank">Rank (Low to High)</option>}
+                <option value="rating">Rating (Highest)</option>
+                <option value="reviews">Reviews (Most)</option>
+              </select>
+            </div>
           </div>
 
           <div className="flex gap-2">
@@ -634,9 +696,9 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
             <div className="flex items-center gap-4">
               <h2 className="text-lg font-semibold text-slate-800">Search Results {isSearching && '(Updating...)'}</h2>
               <span className="bg-slate-200 text-slate-700 text-xs px-2 py-1 rounded-full">
-                {filteredResults.length === results.length
+                {sortedResults.length === results.length
                   ? `${results.length} businesses`
-                  : `${filteredResults.length} of ${results.length} businesses`
+                  : `${sortedResults.length} of ${results.length} businesses`
                 }
               </span>
 
@@ -942,7 +1004,7 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredResults.map((biz) => {
+                {sortedResults.map((biz) => {
                   const added = isAlreadyLead(biz.id);
                   const isAnalyzed = biz.seoScore !== undefined || biz.digitalScore !== undefined;
                   const isReady = biz.outreachMessages !== undefined;
@@ -965,9 +1027,17 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
                           >
                             {biz.name}
                           </button>
-                          <div className="flex items-center gap-2 text-xs text-slate-500">
-                            <span className="bg-brand-50 text-brand-700 px-2 py-0.5 rounded">{biz.category || 'Business'}</span>
-                            <span className="flex items-center gap-1 text-amber-500">★ {biz.rating} ({biz.reviewCount})</span>
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                            <span className="bg-brand-50 text-brand-700 px-2 py-0.5 rounded border border-brand-100">{biz.category || 'Business'}</span>
+                            {biz.rank ? (
+                              <span className={`px-2 py-0.5 rounded border ${biz.rank <= 10 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                  biz.rank <= 30 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                    'bg-red-50 text-red-700 border-red-200'
+                                }`}>
+                                Rank #{biz.rank}
+                              </span>
+                            ) : null}
+                            <span className="flex items-center gap-1 text-amber-500 font-medium">★ {biz.rating} ({biz.reviewCount})</span>
                           </div>
                           <div className="text-sm text-slate-500 mt-1 flex items-center gap-1">
                             <MapPin size={14} /> {biz.address}

@@ -2,12 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import BusinessSearch from './pages/BusinessSearch';
-import LeadBoard from './pages/LeadBoard';
-import AnalysisList from './pages/AnalysisList';
-import AnalysisDetail from './pages/AnalysisDetail';
-import RankTracker from './pages/RankTracker';
+import Topbar from './components/Topbar';
+import { useProject } from './context/ProjectContext';
 import { Business } from './types';
-import { discoverBusinesses, enrichBusiness, loadBusinessesFromDB, syncBusinessesToDB, saveBusinessToDB, updateBusinessInDB } from './services/backendApi';
+import { discoverBusinesses, enrichBusiness, loadBusinessesFromDB, syncBusinessesToDB, saveBusinessToDB, updateBusinessInDB, searchRankings, saveRankings } from './services/backendApi';
 
 // LocalStorage keys (kept as fallback)
 const LEADS_STORAGE_KEY = 'growthscout_leads';
@@ -84,8 +82,12 @@ const App = () => {
   const leads = searchResults;
   const setLeads = setSearchResults;
 
-  // MERGE data from ALL sources on startup
+  // MERGE data from ALL sources on startup AND when active project changes
+  const { activeProject } = useProject();
+
   useEffect(() => {
+    if (!activeProject) return; // Wait until project context is ready
+
     const loadData = async () => {
       setIsLoading(true);
       try {
@@ -95,9 +97,9 @@ const App = () => {
 
         console.log(`[App] Storage Report: ${localSearch.length} search results, ${localLeads.length} pipeline leads`);
 
-        // 2. Load from Supabase
-        console.log('[App] Loading businesses from Supabase...');
-        const dbBusinesses = await loadBusinessesFromDB();
+        // 2. Load from Supabase filtered by PROJECT
+        console.log(`[App] Loading businesses from Supabase for project: ${activeProject.name}`);
+        const dbBusinesses = await loadBusinessesFromDB(activeProject.id);
         console.log(`[App] Found ${dbBusinesses.length} businesses in Supabase`);
 
         // 3. MASTER MERGE strategy
@@ -107,10 +109,9 @@ const App = () => {
         // Add DB items first
         dbBusinesses.forEach(b => masterMap.set(b.id, b));
 
-        // Overlay Local Search Results (preserves recent searches)
+        // Note: For now we still overlay local items even if they might belong to another project
+        // since the migration strategy handles this, but in future local storage should be deprecated
         localSearch.forEach(b => masterMap.set(b.id, b));
-
-        // Overlay Local Leads (preserves pipeline status)
         localLeads.forEach(b => masterMap.set(b.id, b));
 
         const merged = Array.from(masterMap.values());
@@ -122,8 +123,10 @@ const App = () => {
         // If we have more items in memory than came from DB, we need to push updates
         const memoryCount = localSearch.length + localLeads.length;
         if (memoryCount > 0 && merged.length > dbBusinesses.length) {
-          console.log(`[App] Auto-syncing merged data (${merged.length} items) to Supabase...`);
-          await syncBusinessesToDB(merged);
+          // ensure project id is attached before syncing
+          const toSync = merged.map(m => ({ ...m, projectId: m.projectId || activeProject.id }));
+          console.log(`[App] Auto-syncing merged data (${toSync.length} items) to Supabase...`);
+          await syncBusinessesToDB(toSync);
         }
 
         setDbError(null);
@@ -137,7 +140,7 @@ const App = () => {
     };
 
     loadData();
-  }, []);
+  }, [activeProject]);
 
   // NOTE: localStorage backup removed - now only used as fallback when Supabase fails
   // This prevents localStorage from filling up with large screenshot data
@@ -251,6 +254,8 @@ const App = () => {
           estimatedValue: 2000 + Math.floor(Math.random() * 3000),
           searchQuery: query,
           searchLocation: location,
+          source: 'apify_search',
+          projectId: activeProject?.id
         };
       });
 
@@ -277,10 +282,74 @@ const App = () => {
     }
   };
 
-  const updateSearchResult = (id: string, data: Partial<Business>) => {
-    setSearchResults(prev => prev.map(r => r.id === id ? { ...r, ...data } : r));
+  // DataForSEO Search
+  const performRankSearch = async (keyword: string, location: string, count: number) => {
+    if (!activeProject) {
+      alert("Please create or select a project first.");
+      return [];
+    }
+
+    setIsSearching(true);
+    setDbError(null);
+    try {
+      const data = await searchRankings(keyword, location, count);
+      // Fire and forget save to DB History
+      saveRankings(keyword, location, data.results).catch(err => console.error("History save failed", err));
+
+      // Map to Business type
+      const newBusinesses: Business[] = data.results.map(biz => {
+        const uniqueString = `${biz.name}-${biz.address || biz.website || ''}`;
+        const deterministicId = biz.placeId || `biz-${btoa(uniqueString).substring(0, 16)}`;
+
+        return {
+          id: deterministicId,
+          name: biz.name,
+          address: biz.address || 'Unknown',
+          category: keyword,
+          rating: biz.rating || 0,
+          reviewCount: biz.reviewCount || 0,
+          phone: biz.phone || '',
+          website: biz.website,
+          status: 'new',
+          qualityScore: Math.max(20, 100 - biz.rank),
+          digitalScore: 50,
+          seoScore: Math.max(10, 100 - (biz.rank * 2)),
+          socialScore: 50,
+          estimatedValue: 2000 + Math.floor(Math.random() * 3000),
+          searchQuery: keyword,
+          searchLocation: location,
+          source: 'rank_tracker',
+          rank: biz.rank,
+          projectId: activeProject.id
+        };
+      });
+
+      // Inject all into global results
+      setSearchResults(prev => {
+        const combined = [...newBusinesses, ...prev];
+        const uniqueMap = new Map();
+        combined.forEach(item => {
+          if (!uniqueMap.has(item.id)) {
+            uniqueMap.set(item.id, item);
+          }
+        });
+        return Array.from(uniqueMap.values());
+      });
+
+      return newBusinesses;
+    } catch (error: any) {
+      console.error('Rank Search Error:', error);
+      setDbError(error.message || 'Rank search failed');
+      throw error;
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const updateSearchResult = (id: string, partial: Partial<Business>) => {
+    setSearchResults(prev => prev.map(r => r.id === id ? { ...r, ...partial } : r));
     // Also update in Supabase
-    updateBusinessInDB(id, data).catch(e => console.error('[DB Update] Failed:', e));
+    updateBusinessInDB(id, partial).catch(e => console.error('[DB Update] Failed:', e));
   };
 
 
@@ -321,71 +390,67 @@ const App = () => {
     <HashRouter>
       <div className="flex min-h-screen bg-slate-50">
         <Sidebar />
-        <main className="ml-64 flex-1 overflow-x-hidden">
-          {/* DB Status Bar */}
-          {dbError && (
-            <div className="bg-red-100 border-b border-red-200 px-4 py-2 text-sm text-red-700 flex items-center justify-between">
-              <span>⚠️ Database error: {dbError}. Using local storage.</span>
-              <button onClick={syncToSupabase} className="text-red-800 underline hover:no-underline">
-                Retry Sync
+        <main className="ml-64 flex-1 flex flex-col overflow-hidden h-screen">
+          <Topbar />
+
+          <div className="flex-1 overflow-x-hidden overflow-y-auto">
+            {/* DB Status Bar */}
+            {dbError && (
+              <div className="bg-red-100 border-b border-red-200 px-4 py-2 text-sm text-red-700 flex items-center justify-between">
+                <span>⚠️ Database error: {dbError}. Using local storage.</span>
+                <button onClick={syncToSupabase} className="text-red-800 underline hover:no-underline">
+                  Retry Sync
+                </button>
+              </div>
+            )}
+
+            {/* DEBUG: Storage Status Banner */}
+            <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2 text-xs text-yellow-800 font-mono flex items-center justify-between">
+              <span>
+                📊 DEBUG: LocalStorage Status |
+                search_results: {(() => {
+                  try {
+                    const val = localStorage.getItem('growthscout_search_results');
+                    return val ? JSON.parse(val).length : 0;
+                  } catch { return 'ERROR'; }
+                })()} items |
+                leads: {(() => {
+                  try {
+                    const val = localStorage.getItem('growthscout_leads');
+                    return val ? JSON.parse(val).length : 0;
+                  } catch { return 'ERROR'; }
+                })()} items |
+                In Memory: {searchResults.length} items
+              </span>
+              <button
+                onClick={syncToSupabase}
+                disabled={isSyncing}
+                className="bg-yellow-600 text-white px-3 py-1 rounded text-xs hover:bg-yellow-700 disabled:opacity-50"
+              >
+                {isSyncing ? '⏳ Syncing...' : '🔄 Sync to DB'}
               </button>
             </div>
-          )}
 
-          {/* DEBUG: Storage Status Banner */}
-          <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2 text-xs text-yellow-800 font-mono flex items-center justify-between">
-            <span>
-              📊 DEBUG: LocalStorage Status |
-              search_results: {(() => {
-                try {
-                  const val = localStorage.getItem('growthscout_search_results');
-                  return val ? JSON.parse(val).length : 0;
-                } catch { return 'ERROR'; }
-              })()} items |
-              leads: {(() => {
-                try {
-                  const val = localStorage.getItem('growthscout_leads');
-                  return val ? JSON.parse(val).length : 0;
-                } catch { return 'ERROR'; }
-              })()} items |
-              In Memory: {searchResults.length} items
-            </span>
-            <button
-              onClick={syncToSupabase}
-              disabled={isSyncing}
-              className="bg-yellow-600 text-white px-3 py-1 rounded text-xs hover:bg-yellow-700 disabled:opacity-50"
-            >
-              {isSyncing ? '⏳ Syncing...' : '🔄 Sync to DB'}
-            </button>
+            <Routes>
+              <Route path="/" element={
+                <BusinessSearch
+                  onAddLead={addLead}
+                  existingLeads={leads}
+                  results={searchResults}
+                  isSearching={isSearching}
+                  onSearch={performSearch}
+                  onRankSearch={performRankSearch}
+                  onUpdateResult={updateSearchResult}
+                  onInjectResult={injectSearchResult}
+                  onClear={clearSearchResults}
+                  onDeduplicate={handleDeduplicate}
+                  onSyncToDb={syncToSupabase}
+                  isSyncing={isSyncing}
+                />
+              } />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
           </div>
-
-          <Routes>
-            <Route path="/" element={
-              <BusinessSearch
-                onAddLead={addLead}
-                existingLeads={leads}
-                results={searchResults}
-                isSearching={isSearching}
-                onSearch={performSearch}
-                onUpdateResult={updateSearchResult}
-                onInjectResult={injectSearchResult}
-                onClear={clearSearchResults}
-                onDeduplicate={handleDeduplicate}
-                onSyncToDb={syncToSupabase}
-                isSyncing={isSyncing}
-              />
-            } />
-            <Route path="/rankings" element={
-              <RankTracker
-                onAddLead={addLead}
-                existingLeads={leads}
-              />
-            } />
-            <Route path="/leads" element={<LeadBoard leads={leads} updateStatus={updateLeadStatus} updateBusiness={updateBusiness} />} />
-            <Route path="/analyses" element={<AnalysisList businesses={leads} />} />
-            <Route path="/analysis/:id" element={<AnalysisDetail getBusiness={getBusiness} onUpdateBusiness={updateBusiness} />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
         </main>
       </div>
     </HashRouter>

@@ -63,6 +63,8 @@ interface Business {
     searchLocation?: string;
     whatsappVerified?: boolean;
     isContacted?: boolean;
+    source?: string;
+    rank?: number;
 }
 
 // Supabase row type (snake_case)
@@ -104,6 +106,9 @@ interface LeadRow {
     outreach_message?: string | null; // Legacy field
     contact_info?: any; // Legacy field
     search_location?: string | null;
+    search_query?: string | null;
+    source?: string | null;
+    rank?: number | null;
     created_at?: string;
     updated_at?: string;
     slug?: string | null;
@@ -152,6 +157,8 @@ const businessToRow = (b: Business): Partial<LeadRow> => ({
     outreach_messages: b.outreachMessages || null,
     search_query: b.searchQuery || null,
     search_location: b.searchLocation || null,
+    source: b.source || null,
+    rank: b.rank || null,
     whatsapp_verified: b.whatsappVerified ?? null,
     is_contacted: b.isContacted ?? false,
     updated_at: new Date().toISOString(),
@@ -198,6 +205,8 @@ const rowToBusiness = (r: LeadRow): Business => ({
     // Legacy mapping if new fields missing
     searchQuery: r.search_query || undefined,
     searchLocation: r.search_location || undefined,
+    source: (r.source as any) || undefined,
+    rank: r.rank || undefined,
     whatsappVerified: r.whatsapp_verified ?? undefined,
     isContacted: r.is_contacted ?? false,
 });
@@ -273,12 +282,17 @@ export const bulkSaveBusinesses = async (businesses: Business[]): Promise<{ save
 /**
  * Load all businesses from Supabase
  */
-export const loadAllBusinesses = async (): Promise<Business[]> => {
+export const loadAllBusinesses = async (projectId?: string): Promise<Business[]> => {
     if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error("Missing Supabase Credentials");
 
-    console.log('[Persistence] Loading all businesses from Supabase...');
+    console.log(`[Persistence] Loading businesses from Supabase (Project ID: ${projectId || 'ALL'})...`);
 
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/leads?select=*&order=created_at.desc`, {
+    let url = `${SUPABASE_URL}/rest/v1/leads?select=*&order=created_at.desc`;
+    if (projectId) {
+        url += `&project_id=eq.${projectId}`;
+    }
+
+    const response = await fetch(url, {
         method: 'GET',
         headers: {
             'apikey': SUPABASE_KEY,
@@ -402,8 +416,8 @@ export const saveLead = async (data: any) => {
     return business;
 };
 
-export const getLeads = async () => {
-    return loadAllBusinesses();
+export const getLeads = async (projectId?: string) => {
+    return loadAllBusinesses(projectId);
 };
 
 export const createProject = async (name: string) => {

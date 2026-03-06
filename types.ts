@@ -1,3 +1,10 @@
+export interface Project {
+  id: string;
+  name: string;
+  description?: string;
+  created_at?: string;
+}
+
 export interface Business {
   id: string;
   name: string;
@@ -17,6 +24,8 @@ export interface Business {
   socialScore?: number;
   estimatedValue?: number; // Potential deal size in USD
   projectId?: string; // Associated Project ID
+  source?: 'rank_tracker' | 'apify_search' | 'manual';
+  rank?: number;
 
   // Enrichment Data
   founderName?: string;

@@ -298,9 +298,13 @@ export const analyzeWebsite = async (url: string, businessName: string): Promise
 
 // ============ SUPABASE PERSISTENCE ============
 
-// Load all businesses from Supabase
-export const loadBusinessesFromDB = async (): Promise<Business[]> => {
-    const response = await fetch(`${API_BASE}/leads`, {
+// Load all businesses from Supabase (filtered by project optional)
+export const loadBusinessesFromDB = async (projectId?: string): Promise<Business[]> => {
+    let url = `${API_BASE}/leads`;
+    if (projectId) {
+        url += `?projectId=${encodeURIComponent(projectId)}`;
+    }
+    const response = await fetch(url, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' }
     });
@@ -354,6 +358,37 @@ export const updateBusinessInDB = async (id: string, updates: Partial<Business>)
     }
     const data = await response.json();
     return data.success;
+};
+
+// ============ PROJECTS ============
+
+import { Project } from '../types';
+
+export const getProjects = async (): Promise<Project[]> => {
+    const response = await fetch(`${API_BASE}/projects`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+    });
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to load projects');
+    }
+    const data = await response.json();
+    return data.projects || [];
+};
+
+export const createProject = async (name: string, description?: string): Promise<Project> => {
+    const response = await fetch(`${API_BASE}/projects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description })
+    });
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Project creation failed');
+    }
+    const data = await response.json();
+    return data.project;
 };
 
 // ============ RANK TRACKER ============

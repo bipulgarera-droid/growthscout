@@ -198,7 +198,8 @@ app.post('/api/pipeline/start', async (req, res) => {
 
 app.get('/api/leads', async (req, res) => {
     try {
-        const leads = await getLeads();
+        const projectId = req.query.projectId as string | undefined;
+        const leads = await getLeads(projectId);
         res.json({ success: true, leads });
     } catch (error: any) {
         console.error("Fetch Leads Error:", error);
@@ -207,7 +208,32 @@ app.get('/api/leads', async (req, res) => {
 });
 
 // ============ SUPABASE PERSISTENCE ============
-import { bulkSaveBusinesses, updateBusinessField, saveBusiness } from './services/persistence.js';
+import { bulkSaveBusinesses, updateBusinessField, saveBusiness, getProjects, createProject } from './services/persistence.js';
+
+// Get Projects
+app.get('/api/projects', async (req, res) => {
+    try {
+        const projects = await getProjects();
+        res.json({ success: true, projects });
+    } catch (error: any) {
+        console.error("Fetch Projects Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Create Project
+app.post('/api/projects', async (req, res) => {
+    try {
+        const { name, description } = req.body;
+        if (!name) return res.status(400).json({ error: 'Project name is required' });
+
+        const project = await createProject(name);
+        res.json({ success: true, project });
+    } catch (error: any) {
+        console.error("Create Project Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 // Bulk sync businesses to Supabase
 app.post('/api/leads/sync', async (req, res) => {

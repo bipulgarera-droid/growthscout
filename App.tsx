@@ -125,8 +125,10 @@ const App = () => {
         if (memoryCount > 0 && merged.length > dbBusinesses.length) {
           // ensure project id is attached before syncing
           const toSync = merged.map(m => ({ ...m, projectId: m.projectId || activeProject.id }));
-          console.log(`[App] Auto-syncing merged data (${toSync.length} items) to Supabase...`);
-          await syncBusinessesToDB(toSync);
+          console.log(`[App] Auto-syncing merged data (${toSync.length} items) to Supabase in background...`);
+          syncBusinessesToDB(toSync).catch(err => {
+            console.error('[App] Background auto-sync failed:', err);
+          });
         }
 
         setDbError(null);

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Database, BarChart3 } from 'lucide-react';
+import { Search, Database } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 const Sidebar = () => {
@@ -32,8 +32,7 @@ const Sidebar = () => {
         <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4 px-4">
           Navigation
         </div>
-        <NavItem path="/" icon={Search} label="Business Search" />
-        <NavItem path="/rankings" icon={BarChart3} label="Rank Tracker" />
+        <NavItem path="/" icon={Search} label="Prospecting Hub" />
       </nav>
     </div>
   );

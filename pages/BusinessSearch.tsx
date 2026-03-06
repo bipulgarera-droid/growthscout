@@ -76,6 +76,7 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
     whatsappVerifiedOnly: boolean;
     contactedOnly: boolean;
     notContactedOnly: boolean;
+    rankFilter: 'all' | 'top10' | '11plus';
   }>({
     cityFilter: '',
     stateFilter: '',
@@ -91,6 +92,7 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
     whatsappVerifiedOnly: false,
     contactedOnly: false,
     notContactedOnly: false,
+    rankFilter: 'all',
   });
 
   const navigate = useNavigate();
@@ -434,17 +436,19 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
   };
 
 
-  // Get unique categories from results, and also explicitly include the exact search terms
-  // that were used to find these results so they remain permanently filterable.
-  const uniqueCategories = Array.from(new Set([
-    ...results.map(r => r.category),
-    ...results.map(r => r.searchQuery),
-    ...(searchCategory ? [searchCategory] : [])
-  ])).filter(Boolean).sort();
+  // derived unique categories
+  const uniqueCategories = Array.from(new Set(results.map(b => b.category || b.searchQuery).filter(Boolean))).sort();
 
-  // Filter logic
+  // Primary filtering pipeline
   const filteredResults = results.filter(business => {
-    // City & State filters (Case insensitive partial match)
+    // 1. Source filter (CRITICAL)
+    if (searchSource === 'apify' && business.source === 'rank_tracker') return false;
+    if (searchSource === 'rank_tracker' && business.source !== 'rank_tracker') return false;
+
+    // Search Category input
+    if (searchCategory && !business.category?.toLowerCase().includes(searchCategory.toLowerCase()) && !business.searchQuery?.toLowerCase().includes(searchCategory.toLowerCase())) return false;
+
+    // Explicit Location Filters (From Filter Panel)
     if (activeFilters.cityFilter && business.address.toLowerCase().indexOf(activeFilters.cityFilter.toLowerCase()) === -1) return false;
     if (activeFilters.stateFilter && business.address.toLowerCase().indexOf(activeFilters.stateFilter.toLowerCase()) === -1) return false;
 
@@ -489,6 +493,16 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
     // NOT Contacted Only filter
     if (activeFilters.notContactedOnly && business.isContacted === true) return false;
 
+    // Rank tier filter (Rank Target source only)
+    if (searchSource === 'rank_tracker') {
+      if (activeFilters.rankFilter === 'top10') {
+        if (!business.rank || business.rank > 10) return false;
+      }
+      if (activeFilters.rankFilter === '11plus') {
+        if (!business.rank || business.rank <= 10) return false;
+      }
+    }
+
     return true;
   });
 
@@ -526,7 +540,8 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
     (activeFilters.emailsGenerated ? 1 : 0) +
     (activeFilters.whatsappVerifiedOnly ? 1 : 0) +
     (activeFilters.contactedOnly ? 1 : 0) +
-    (activeFilters.notContactedOnly ? 1 : 0);
+    (activeFilters.notContactedOnly ? 1 : 0) +
+    (activeFilters.rankFilter !== 'all' ? 1 : 0);
 
   // Clear all filters
   const handleClearFilters = () => {
@@ -545,6 +560,7 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
       whatsappVerifiedOnly: false,
       contactedOnly: false,
       notContactedOnly: false,
+      rankFilter: 'all',
     });
   };
 
@@ -841,6 +857,23 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
                     ))}
                   </select>
 
+                  {searchSource === 'rank_tracker' && (
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        Rank Performance
+                      </label>
+                      <select
+                        value={activeFilters.rankFilter}
+                        onChange={(e) => setActiveFilters({ ...activeFilters, rankFilter: e.target.value as any })}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
+                      >
+                        <option value="all">Any Rank</option>
+                        <option value="top10">Top 10 (Winning)</option>
+                        <option value="11plus">Rank 11+ (Needs SEO)</option>
+                      </select>
+                    </div>
+                  )}
+
                   <label className="block text-sm font-medium text-slate-700 mb-2">
                     Location Filter
                   </label>
@@ -1031,8 +1064,8 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
                             <span className="bg-brand-50 text-brand-700 px-2 py-0.5 rounded border border-brand-100">{biz.category || 'Business'}</span>
                             {biz.rank ? (
                               <span className={`px-2 py-0.5 rounded border ${biz.rank <= 10 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                  biz.rank <= 30 ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                    'bg-red-50 text-red-700 border-red-200'
+                                biz.rank <= 30 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                  'bg-red-50 text-red-700 border-red-200'
                                 }`}>
                                 Rank #{biz.rank}
                               </span>

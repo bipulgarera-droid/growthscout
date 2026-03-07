@@ -667,8 +667,35 @@ app.post('/api/push-to-outreach', async (req, res) => {
 
         // Map GrowthScout lead fields → Outreach contact format
         const mappedLeads = leads.map((lead: any) => {
-            // Prefer founder name, fall back to business name
-            const name = lead.founder_name || lead.business_name || 'Unknown';
+            // Smart name resolution
+            const founderName = lead.founder_name && lead.founder_name !== 'Not Found' ? lead.founder_name : null;
+            let name: string;
+
+            if (founderName) {
+                // Real person name — use as-is
+                name = founderName;
+            } else if (lead.business_name) {
+                // No founder — create a casual team name from the business name
+                // e.g. "Blouberg Wellness Center" → "Blouberg Team"
+                // e.g. "Dr. Smith's Family Dentistry LLC" → "Smith Team"
+                const noise = ['llc', 'inc', 'corp', 'ltd', 'co', 'company', 'group', 'services',
+                    'solutions', 'center', 'centre', 'clinic', 'spa', 'studio', 'salon',
+                    'agency', 'associates', 'enterprises', 'international', 'the', 'and',
+                    'of', 'for', 'at', 'by', '&', 'pvt', 'private', 'limited'];
+                const words = lead.business_name
+                    .replace(/[.,'"()]/g, '')   // strip punctuation
+                    .replace(/dr\.\s*/i, '')     // strip "Dr."
+                    .replace(/'s\b/g, '')        // strip possessives
+                    .split(/\s+/)
+                    .filter((w: string) => w.length > 0 && !noise.includes(w.toLowerCase()));
+
+                // Take first 1-2 meaningful words
+                const shortName = words.slice(0, 2).join(' ') || lead.business_name.split(/\s+/)[0];
+                name = `${shortName} Team`;
+            } else {
+                name = 'Unknown';
+            }
+
             // Prefer contact_email, fall back to email
             const email = lead.contact_email || lead.email || '';
             // Build bio from analysis bullets

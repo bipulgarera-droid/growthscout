@@ -1432,6 +1432,18 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
                         ) : <span className="text-slate-400 italic">Not detected</span>}
                       </div>
                     </div>
+
+                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Website</label>
+                      <div className="flex items-center gap-2">
+                        <Globe size={16} className="text-emerald-600" />
+                        {selectedContact.website ? (
+                          <a href={selectedContact.website} target="_blank" rel="noreferrer" className="font-medium text-emerald-600 hover:underline truncate max-w-[150px]">
+                            Visit Site
+                          </a>
+                        ) : <span className="text-slate-400 italic">Not available</span>}
+                      </div>
+                    </div>
                   </div>
 
                   <button

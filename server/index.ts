@@ -146,8 +146,9 @@ app.post('/api/discover', async (req, res) => {
     }
 });
 
-// ============ SERPER ENRICHMENT ============
+// ============ ENRICHMENT ============
 import { findFounderInfo, quickEnrich } from './services/serper.js';
+import { scrapeContactInfoApify } from './services/apifyEnrichment.js';
 
 app.post('/api/enrich', async (req, res) => {
     try {
@@ -157,15 +158,37 @@ app.post('/api/enrich', async (req, res) => {
             return;
         }
 
-        if (quick) {
-            const info = await quickEnrich(businessName, website);
-            console.log('[Enrich API] Returning (quick):', JSON.stringify(info, null, 2));
-            res.json(info);
-        } else {
-            const info = await findFounderInfo(businessName, location);
-            console.log('[Enrich API] Returning:', JSON.stringify(info, null, 2));
-            res.json(info);
+        let apifyData: any = {};
+
+        // 1. Run Apify Contact Scraper FIRST if a website exists
+        if (website) {
+            console.log(`[Enrich API] Starting Apify scrape for ${website}`);
+            apifyData = await scrapeContactInfoApify(website);
         }
+
+        // 2. Run Serper to fill in blanks (like Founder Name which Apify doesn't extract)
+        let serperData: any = {};
+        if (quick) {
+            serperData = await quickEnrich(businessName, website);
+        } else {
+            serperData = await findFounderInfo(businessName, location);
+        }
+
+        // 3. Smart Merge (Apify overrides Serper for social/contact details)
+        const mergedInfo = {
+            founderName: serperData.founderName, // Apify doesn't get this
+            email: apifyData.email || serperData.email,
+            phone: apifyData.phone || serperData.phone,
+            linkedin: apifyData.linkedin || serperData.linkedin,
+            instagram: apifyData.instagram || serperData.instagram,
+            facebook: apifyData.facebook || serperData.facebook,
+            twitter: apifyData.twitter || serperData.twitter,
+            sources: [...(apifyData.sources || []), ...(serperData.sources || [])]
+        };
+
+        console.log('[Enrich API] Returning Merged Info:', JSON.stringify(mergedInfo, null, 2));
+        res.json(mergedInfo);
+
     } catch (error: any) {
         console.error(error);
         res.status(500).json({ error: error.message });

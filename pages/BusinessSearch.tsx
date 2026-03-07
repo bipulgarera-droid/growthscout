@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, MapPin, Filter, Download, ExternalLink, RefreshCw, Smartphone, Mail, Linkedin, Instagram, Eye, UserPlus, X, User, Save, Check, PlusCircle } from 'lucide-react';
+import { Search, MapPin, Filter, Download, ExternalLink, RefreshCw, Smartphone, Mail, Linkedin, Instagram, Eye, UserPlus, X, User, Save, Check, PlusCircle, Send } from 'lucide-react';
 import { Business } from '../types';
 import { useNavigate } from 'react-router-dom';
 import { enrichBusiness, bulkAnalyze, bulkGenerateMessages, bulkSendOutreach, analyzeWebsite, generateWebsite, bulkGenerateWebsites, addManualLead, bulkVerifyWhatsApp, AnalysisResult, OutreachMessages } from '../services/backendApi';
@@ -57,6 +57,13 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
   // Manual Add State
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [manualInput, setManualInput] = useState({ url: '', name: '', city: '' });
+
+  // Push to Outreach State
+  const [isOutreachModalOpen, setIsOutreachModalOpen] = useState(false);
+  const [outreachProjects, setOutreachProjects] = useState<{ id: string; name: string }[]>([]);
+  const [selectedOutreachProject, setSelectedOutreachProject] = useState('');
+  const [isPushingToOutreach, setIsPushingToOutreach] = useState(false);
+  const [isLoadingOutreachProjects, setIsLoadingOutreachProjects] = useState(false);
   const [isManualAdding, setIsManualAdding] = useState(false);
 
   // Filter State
@@ -287,6 +294,63 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
       alert('Verify WA failed: ' + e.message);
     } finally {
       setIsBulkVerifyingWA(false);
+    }
+  };
+
+  // Push to Outreach Handler
+  const handlePushToOutreach = async () => {
+    // First, load Outreach projects
+    setIsLoadingOutreachProjects(true);
+    setIsOutreachModalOpen(true);
+    try {
+      const res = await fetch('/api/outreach/projects');
+      const data = await res.json();
+      if (data.error) {
+        alert('Error loading Outreach projects: ' + data.error);
+        setIsOutreachModalOpen(false);
+        return;
+      }
+      setOutreachProjects(data.projects || []);
+    } catch (e: any) {
+      alert('Cannot connect to Outreach: ' + e.message);
+      setIsOutreachModalOpen(false);
+    } finally {
+      setIsLoadingOutreachProjects(false);
+    }
+  };
+
+  const handleConfirmPushToOutreach = async () => {
+    if (!selectedOutreachProject) {
+      alert('Please select an Outreach project');
+      return;
+    }
+    const selectedLeadIds = Array.from(selectedIds);
+    if (selectedLeadIds.length === 0) return;
+
+    setIsPushingToOutreach(true);
+    try {
+      const res = await fetch('/api/push-to-outreach', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leadIds: selectedLeadIds,
+          outreachProjectId: selectedOutreachProject
+        })
+      });
+      const data = await res.json();
+      if (data.error) {
+        alert('Push failed: ' + data.error);
+      } else {
+        alert(data.message || `Pushed ${data.imported} leads to Outreach!`);
+        // Mark locally as contacted
+        selectedLeadIds.forEach(id => onUpdateResult(id, { isContacted: true }));
+        setIsOutreachModalOpen(false);
+        setSelectedOutreachProject('');
+      }
+    } catch (e: any) {
+      alert('Push to Outreach failed: ' + e.message);
+    } finally {
+      setIsPushingToOutreach(false);
     }
   };
 
@@ -804,6 +868,16 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
                 >
                   {isBulkSending ? <RefreshCw className="animate-spin" size={16} /> : <Mail size={16} />}
                   {isBulkSending ? 'Sending...' : 'Send All'}
+                </button>
+              )}
+
+              {/* Push to Outreach Button */}
+              {selectedIds.size > 0 && (
+                <button
+                  onClick={handlePushToOutreach}
+                  className="flex items-center gap-2 text-white bg-orange-600 border border-orange-600 px-4 py-2 rounded-lg text-sm hover:bg-orange-700 shadow-sm transition-colors animate-fade-in font-medium"
+                >
+                  <Send size={16} /> Push to Outreach ({selectedIds.size})
                 </button>
               )}
 
@@ -1727,6 +1801,74 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
                 {isManualAdding ? 'Processing...' : 'Add Lead'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Push to Outreach Modal */}
+      {isOutreachModalOpen && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => !isPushingToOutreach && setIsOutreachModalOpen(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Push to Outreach</h3>
+                <p className="text-sm text-slate-500 mt-1">Send {selectedIds.size} lead(s) to your email outreach pipeline</p>
+              </div>
+              <button onClick={() => !isPushingToOutreach && setIsOutreachModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={24} />
+              </button>
+            </div>
+
+            {isLoadingOutreachProjects ? (
+              <div className="flex items-center justify-center py-8">
+                <RefreshCw className="animate-spin text-brand-600" size={24} />
+                <span className="ml-2 text-slate-600">Loading Outreach projects...</span>
+              </div>
+            ) : outreachProjects.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-slate-500">No projects found in Outreach.</p>
+                <p className="text-sm text-slate-400 mt-1">Create a project in the Outreach app first.</p>
+              </div>
+            ) : (
+              <>
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Select Outreach Project</label>
+                  <select
+                    value={selectedOutreachProject}
+                    onChange={e => setSelectedOutreachProject(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-orange-500 outline-none text-sm"
+                  >
+                    <option value="">Choose a project...</option>
+                    {outreachProjects.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-6">
+                  <p className="text-sm text-orange-800">
+                    <strong>{selectedIds.size}</strong> leads will be imported with status <strong>enriched</strong> — they'll skip enrichment and go straight to icebreaker generation.
+                  </p>
+                </div>
+
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setIsOutreachModalOpen(false)}
+                    disabled={isPushingToOutreach}
+                    className="px-4 py-2 text-slate-600 hover:bg-slate-50 rounded-lg font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmPushToOutreach}
+                    disabled={isPushingToOutreach || !selectedOutreachProject}
+                    className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2"
+                  >
+                    {isPushingToOutreach ? <RefreshCw className="animate-spin" size={18} /> : <Send size={18} />}
+                    {isPushingToOutreach ? 'Pushing...' : 'Push Leads'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

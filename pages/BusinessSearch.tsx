@@ -342,8 +342,6 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
         alert('Push failed: ' + data.error);
       } else {
         alert(data.message || `Pushed ${data.imported} leads to Outreach!`);
-        // Mark locally as contacted
-        selectedLeadIds.forEach(id => onUpdateResult(id, { isContacted: true }));
         setIsOutreachModalOpen(false);
         setSelectedOutreachProject('');
       }

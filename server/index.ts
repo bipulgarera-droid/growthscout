@@ -746,12 +746,6 @@ app.post('/api/push-to-outreach', async (req, res) => {
 
         const result = await response.json();
 
-        // Mark leads as contacted in our DB
-        await supabase
-            .from('leads')
-            .update({ is_contacted: true, updated_at: new Date().toISOString() })
-            .in('id', leadIds);
-
         res.json({
             success: true,
             ...result,

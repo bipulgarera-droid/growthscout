@@ -18,6 +18,7 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
+    "google-libphonenumber": "^3.2.34",
     "googleapis": "^144.0.0",
     "lucide-react": "^0.562.0",
     "puppeteer": "^24.35.0",
@@ -35,6 +36,7 @@
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
+    "@types/google-libphonenumber": "^7.4.30",
     "@types/node": "^22.14.0"
   }
 }

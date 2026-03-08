@@ -1,9 +1,11 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import libphonenumber from 'google-libphonenumber';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const phoneUtil = libphonenumber.PhoneNumberUtil.getInstance();
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const SERPER_API_KEY = process.env.SERPER_API_KEY;
@@ -95,13 +97,48 @@ const extractEmail = (text: string): string | undefined => {
     return undefined;
 };
 
-// Extract phone from text
-const extractPhone = (text: string): string | undefined => {
-    const phoneRegex = /(\+?1?[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g;
-    const matches = text.match(phoneRegex);
+// Detect country code (ISO 3166-1 alpha-2) from a location string
+const detectCountryCode = (location?: string): string => {
+    if (!location) return 'US'; // Default to US if unknown
+
+    const locLower = location.toLowerCase();
+
+    if (locLower.includes('india') || locLower.includes('mumbai') || locLower.includes('delhi')) return 'IN';
+    if (locLower.includes('uk') || locLower.includes('united kingdom') || locLower.includes('london')) return 'GB';
+    if (locLower.includes('canada') || locLower.includes('toronto')) return 'CA';
+    if (locLower.includes('australia') || locLower.includes('sydney')) return 'AU';
+    // Add more explicit country mappings as needed
+
+    return 'US'; // Default to US 
+};
+
+// Extract and format phone from text using google-libphonenumber
+const extractPhone = (text: string, defaultCountry: string = 'US'): string | undefined => {
+    // A broad regex to catch phone-like sequences in snippets before validating them
+    const potentialPhonesRegex = /(\+?\d{1,4}?[-.\s]?\(?\d{1,4}?\)?[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4})/g;
+    const matches = text.match(potentialPhonesRegex);
+
     if (matches && matches.length > 0) {
-        const uniquePhones = Array.from(new Set(matches.map(p => p.trim())));
-        return uniquePhones.join(', ');
+        const validPhones = new Set<string>();
+
+        for (const match of matches) {
+            try {
+                // Parse the potential number using the context country code
+                const number = phoneUtil.parseAndKeepRawInput(match, defaultCountry);
+
+                if (phoneUtil.isValidNumber(number)) {
+                    // Always try to return E.164 strictly, but UI might want national formatting
+                    const formatted = phoneUtil.format(number, libphonenumber.PhoneNumberFormat.INTERNATIONAL);
+                    validPhones.add(formatted);
+                }
+            } catch (e) {
+                // Not a valid number snippet, ignore
+            }
+        }
+
+        if (validPhones.size > 0) {
+            return Array.from(validPhones).slice(0, 2).join(', '); // Limit to 2 just like emails
+        }
     }
     return undefined;
 };
@@ -193,11 +230,13 @@ export const findFounderInfo = async (businessName: string, location?: string): 
         const allEmails = new Set<string>();
         const allPhones = new Set<string>();
 
+        const countryCode = detectCountryCode(location);
+
         for (const result of contactResults) {
             const extractedEmails = extractEmail(result.snippet);
             if (extractedEmails) extractedEmails.split(', ').forEach(e => allEmails.add(e));
 
-            const extractedPhones = extractPhone(result.snippet);
+            const extractedPhones = extractPhone(result.snippet, countryCode);
             if (extractedPhones) extractedPhones.split(', ').forEach(p => allPhones.add(p));
 
             if (result.link.includes('/contact') || result.link.includes('/about')) {

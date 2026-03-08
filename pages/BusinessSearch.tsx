@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, MapPin, Filter, Download, ExternalLink, RefreshCw, Smartphone, Mail, Linkedin, Instagram, Eye, UserPlus, X, User, Save, Check, PlusCircle, Send } from 'lucide-react';
+import { Search, MapPin, Filter, Download, ExternalLink, RefreshCw, Smartphone, Mail, Linkedin, Instagram, Eye, UserPlus, X, User, Save, Check, PlusCircle, Send, Globe } from 'lucide-react';
 import { Business } from '../types';
 import { useNavigate } from 'react-router-dom';
 import { enrichBusiness, bulkAnalyze, bulkGenerateMessages, bulkSendOutreach, analyzeWebsite, generateWebsite, bulkGenerateWebsites, addManualLead, bulkVerifyWhatsApp, AnalysisResult, OutreachMessages } from '../services/backendApi';

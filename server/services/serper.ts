@@ -138,7 +138,7 @@ const extractInstagram = (results: SerperSearchResult[]): string | undefined => 
     return undefined;
 };
 
-// Main business enrichment function - OPTIMIZED: Single search query
+// Main business enrichment function - OPTIMIZED: Contact Info Fallback Only
 export const findFounderInfo = async (businessName: string, location?: string): Promise<FounderInfo> => {
     const info: FounderInfo = { sources: [] };
 
@@ -153,53 +153,41 @@ export const findFounderInfo = async (businessName: string, location?: string): 
     }
 
     try {
-        // ===== SINGLE UNIFIED SEARCH =====
-        // Query: Business Name + Full Address (no quotes) - This should return their Google listing, socials, etc.
-        const unifiedQuery = `${businessName} ${fullAddress}`;
-        console.log(`[Serper] Unified Search: "${unifiedQuery}"`);
-        const unifiedResults = await serperSearch(unifiedQuery);
+        // ===== SEARCH 1: General Contact Info =====
+        const contactQuery = `"${businessName}" ${fullAddress} email OR phone OR contact`;
+        console.log(`\n--- [SERPER FALLBACK] ---`);
+        console.log(`[Serper] Executing Query: [ ${contactQuery} ]`);
+        const contactResults = await serperSearch(contactQuery);
 
-        // Extract ALL data from unified results
-        info.linkedin = extractLinkedIn(unifiedResults);
-        info.instagram = extractInstagram(unifiedResults);
-
-        // Extract email and phone from snippets
-        for (const result of unifiedResults) {
+        for (const result of contactResults) {
             if (!info.email) info.email = extractEmail(result.snippet);
             if (!info.phone) info.phone = extractPhone(result.snippet);
-
-            // Also check if this result contains contact info URL patterns
             if (result.link.includes('/contact') || result.link.includes('/about')) {
                 info.sources.push(result.link);
             }
         }
 
-        // ===== FALLBACK SEARCHES (Only if not found) =====
-
-        // LinkedIn fallback
-        if (!info.linkedin) {
-            console.log(`[Serper] LinkedIn not found in unified search, trying fallback...`);
-            const linkedinResults = await serperSearch(`site:linkedin.com ${businessName} ${city}`);
-            info.linkedin = extractLinkedIn(linkedinResults);
-        }
-
-        // Instagram fallback
-        if (!info.instagram) {
-            console.log(`[Serper] Instagram not found in unified search, trying fallback...`);
-            const instaResults = await serperSearch(`site:instagram.com ${businessName} ${city}`);
-            info.instagram = extractInstagram(instaResults);
-        }
-
-        // Add found URLs to sources
+        // ===== SEARCH 2: LinkedIn Company Page =====
+        const linkedinQuery = `site:linkedin.com/company "${businessName}" ${city}`;
+        console.log(`[Serper] Executing Query: [ ${linkedinQuery} ]`);
+        const linkedinResults = await serperSearch(linkedinQuery);
+        info.linkedin = extractLinkedIn(linkedinResults);
         if (info.linkedin) info.sources.push(info.linkedin);
+
+        // ===== SEARCH 3: Instagram Profile =====
+        const instaQuery = `site:instagram.com "${businessName}" ${city}`;
+        console.log(`[Serper] Executing Query: [ ${instaQuery} ]`);
+        const instaResults = await serperSearch(instaQuery);
+        info.instagram = extractInstagram(instaResults);
         if (info.instagram) info.sources.push(info.instagram);
 
-        console.log(`[Serper] Enrichment complete for "${businessName}":`, {
-            linkedin: info.linkedin ? '✅' : '❌',
-            instagram: info.instagram ? '✅' : '❌',
+        console.log(`[Serper] Fallback enrichment complete for "${businessName}":`, {
             email: info.email ? '✅' : '❌',
             phone: info.phone ? '✅' : '❌',
+            linkedin: info.linkedin ? '✅' : '❌',
+            instagram: info.instagram ? '✅' : '❌',
         });
+        console.log(`-------------------------\n`);
 
     } catch (error) {
         console.error('Enrichment error:', error);

@@ -48,3 +48,4 @@ lerna-debug.log*
 
 # Video / large assets
 *.mp4
+\n# Test Scripts\ntest_compass.py\ncheck_logs.py\nnode_script.js\nserver/test_*.js\ntest_genai.html

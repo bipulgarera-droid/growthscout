@@ -166,17 +166,28 @@ app.post('/api/enrich', async (req, res) => {
             apifyData = await scrapeContactInfoApify(website);
         }
 
-        // 2. Run Serper to fill in blanks (like Founder Name which Apify doesn't extract)
+        // Check if Apify got everything. If it missed anything, use Serper to fill the exact gaps.
+        const needsEmail = !apifyData.email;
+        const needsLinkedin = !apifyData.linkedin;
+        const needsInstagram = !apifyData.instagram;
+        const needsPhone = !apifyData.phone;
+
         let serperData: any = {};
-        if (quick) {
-            serperData = await quickEnrich(businessName, website);
+
+        if (needsEmail || needsLinkedin || needsInstagram || needsPhone) {
+            console.log(`[Enrich API] Apify missing some details. Falling back to Serper.`);
+            if (quick) {
+                serperData = await quickEnrich(businessName, website);
+            } else {
+                serperData = await findFounderInfo(businessName, location);
+            }
         } else {
-            serperData = await findFounderInfo(businessName, location);
+            console.log(`[Enrich API] Apify found all required contact details! Skipping Serper.`);
         }
 
         // 3. Smart Merge (Apify overrides Serper for social/contact details)
         const mergedInfo = {
-            founderName: serperData.founderName, // Apify doesn't get this
+            founderName: undefined, // Explicitly removed per user request
             email: apifyData.email || serperData.email,
             phone: apifyData.phone || serperData.phone,
             linkedin: apifyData.linkedin || serperData.linkedin,

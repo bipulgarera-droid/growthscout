@@ -167,45 +167,16 @@ app.post('/api/enrich', async (req, res) => {
             serperData = await findFounderInfo(businessName, location);
         }
 
-        // 2. Assess Email Confidence
-        let isHighConfidenceEmail = false;
-        if (serperData.email) {
-            // Handle multiple comma-separated emails
-            const emails = serperData.email.split(',').map((e: string) => e.trim());
-
-            for (const email of emails) {
-                const emailDomain = email.split('@')[1]?.toLowerCase();
-                if (!emailDomain) continue;
-
-                if (website) {
-                    try {
-                        const hostname = new URL(website.startsWith('http') ? website : `https://${website}`).hostname.toLowerCase();
-                        const siteDomain = hostname.startsWith('www.') ? hostname.substring(4) : hostname;
-                        if (emailDomain === siteDomain || siteDomain.endsWith(emailDomain)) {
-                            isHighConfidenceEmail = true;
-                            break; // One high confidence email is enough to skip Apify
-                        }
-                    } catch {
-                        // Ignore URL parsing errors
-                    }
-                } else {
-                    // Without a website, non-generic domains are considered Good Confidence
-                    const genericDomains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'aol.com'];
-                    if (!genericDomains.includes(emailDomain)) {
-                        isHighConfidenceEmail = true;
-                        break;
-                    }
-                }
-            }
-        }
+        // 2. Check for Email Presence
+        const hasEmail = !!serperData.email;
 
         let apifyData: any = {};
 
         // 3. Run Apify Contact Scraper (Google Maps Actor) ONLY as Fallback
-        if (isHighConfidenceEmail) {
-            console.log(`[Enrich API] High confidence email found by Serper (${serperData.email}). Skipping Apify Maps.`);
+        if (hasEmail) {
+            console.log(`[Enrich API] Email found by Serper (${serperData.email}). Skipping Apify Maps.`);
         } else {
-            console.log(`[Enrich API] Low confidence or missing email from Serper. Falling back to Apify Maps Scraper...`);
+            console.log(`[Enrich API] No email found from Serper. Falling back to Apify Maps Scraper...`);
             apifyData = await scrapeContactInfoApify(businessName, location, website);
         }
 

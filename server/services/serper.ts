@@ -79,11 +79,18 @@ const extractEmail = (text: string): string | undefined => {
         const filtered = uniqueEmails.filter(e =>
             !e.includes('example') &&
             !e.includes('noreply') &&
-            !e.includes('support@') &&
-            !e.includes('info@')
+            !e.includes('john.smith') &&
+            !e.includes('john.s@') &&
+            !e.includes('john.doe') &&
+            !e.includes('jane.doe') &&
+            !e.includes('test@') &&
+            !e.includes('name@') &&
+            !e.includes('fake@')
         );
+        // We prefer specific emails, but if all were filtered out, fallback to unique ones
         const finalEmails = filtered.length > 0 ? filtered : uniqueEmails;
-        return finalEmails.join(', ');
+        // Limit to max 2 emails as requested
+        return finalEmails.slice(0, 2).join(', ');
     }
     return undefined;
 };

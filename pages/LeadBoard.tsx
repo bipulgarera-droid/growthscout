@@ -8,6 +8,7 @@ interface LeadBoardProps {
   leads: Business[];
   updateStatus: (id: string, status: Business['status']) => void;
   updateBusiness: (id: string, data: Partial<Business>) => void;
+  addLead: (business: Business) => void;
 }
 
 const COLUMNS: { id: Business['status']; label: string; color: string }[] = [
@@ -19,7 +20,7 @@ const COLUMNS: { id: Business['status']; label: string; color: string }[] = [
 ];
 
 
-const LeadBoard: React.FC<LeadBoardProps> = ({ leads, updateStatus, updateBusiness }) => {
+const LeadBoard: React.FC<LeadBoardProps> = ({ leads, updateStatus, updateBusiness, addLead }) => {
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
   const [enrichingId, setEnrichingId] = useState<string | null>(null);
 
@@ -42,13 +43,31 @@ const LeadBoard: React.FC<LeadBoardProps> = ({ leads, updateStatus, updateBusine
     setEnrichingId(lead.id);
     try {
       const data = await enrichBusiness(lead.name, lead.address, lead.website);
+
+      const emails = data.email ? data.email.split(',').map(e => e.trim()).filter(Boolean) : [];
+      const primaryEmail = emails.length > 0 ? emails[0] : lead.contactEmail;
+      const secondaryEmail = emails.length > 1 ? emails[1] : null;
+
       updateBusiness(lead.id, {
         founderName: data.founderName || undefined,
         linkedin: data.linkedin || undefined,
-        contactEmail: data.email || undefined,
+        contactEmail: primaryEmail,
         instagram: data.instagram || undefined,
         phone: data.phone || lead.phone,
       });
+
+      if (secondaryEmail) {
+        const duplicateBiz: Business = {
+          ...lead,
+          id: `${lead.id}-${Date.now()}-dup`,
+          contactEmail: secondaryEmail,
+          founderName: data.founderName || undefined,
+          linkedin: data.linkedin || undefined,
+          instagram: data.instagram || undefined,
+          phone: data.phone || lead.phone,
+        };
+        addLead(duplicateBiz);
+      }
     } catch (e) {
       console.error('Enrichment failed:', e);
       alert('Find Founder failed. Check if Serper API key is set.');

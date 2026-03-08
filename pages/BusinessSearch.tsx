@@ -432,15 +432,37 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
     try {
       const data = await enrichBusiness(biz.name, biz.address, biz.website);
 
-      // Update Result in Global Store
+      // Parse emails to handle multiple
+      const emails = data.email ? data.email.split(',').map(e => e.trim()).filter(Boolean) : [];
+      const primaryEmail = emails.length > 0 ? emails[0] : biz.contactEmail;
+      const secondaryEmail = emails.length > 1 ? emails[1] : null;
+
+      // Update Result in Global Store with Primary Email
       onUpdateResult(biz.id, {
         founderName: data.founderName || 'Not Found',
         linkedin: data.linkedin || biz.linkedin,
-        contactEmail: data.email || biz.contactEmail,
+        contactEmail: primaryEmail,
         instagram: data.instagram || biz.instagram,
         phone: data.phone || biz.phone,
         address: data.address || biz.address,
       });
+
+      // If a second email exists, duplicate the entire business record for that specific email
+      if (secondaryEmail) {
+        const duplicateBiz: Business = {
+          ...biz,
+          id: `${biz.id}-${Date.now()}-dup`, // Ensure unique ID
+          contactEmail: secondaryEmail,
+          founderName: data.founderName || 'Not Found',
+          linkedin: data.linkedin || biz.linkedin,
+          instagram: data.instagram || biz.instagram,
+          phone: data.phone || biz.phone,
+          address: data.address || biz.address,
+        };
+        if (onInjectResult) {
+          onInjectResult(duplicateBiz);
+        }
+      }
 
       // Also update the modal view if it's the same business
       if (selectedContact && selectedContact.id === biz.id) {
@@ -448,7 +470,7 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
           ...selectedContact,
           founderName: data.founderName || 'Not Found',
           linkedin: data.linkedin || biz.linkedin,
-          contactEmail: data.email || biz.contactEmail,
+          contactEmail: primaryEmail,
           instagram: data.instagram || biz.instagram,
           phone: data.phone || biz.phone,
           address: data.address || biz.address,
@@ -1452,17 +1474,39 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
                       setIsModalActionLoading(true);
                       try {
                         const data = await enrichBusiness(selectedContact.name, selectedContact.address, selectedContact.website);
-                        // Update local modal state + global store
+
+                        // Parse emails to handle multiple
+                        const emails = data.email ? data.email.split(',').map(e => e.trim()).filter(Boolean) : [];
+                        const primaryEmail = emails.length > 0 ? emails[0] : selectedContact.contactEmail;
+                        const secondaryEmail = emails.length > 1 ? emails[1] : null;
+
+                        // Update local modal state + global store with primary email
                         const updated = {
                           ...selectedContact,
                           founderName: data.founderName || 'Not Found',
                           linkedin: data.linkedin || selectedContact.linkedin,
-                          contactEmail: data.email || selectedContact.contactEmail,
+                          contactEmail: primaryEmail,
                           instagram: data.instagram || selectedContact.instagram,
                           phone: data.phone || selectedContact.phone,
                         };
                         setSelectedContact(updated);
                         onUpdateResult(updated.id, updated);
+
+                        // If a second email exists, duplicate the entire business record
+                        if (secondaryEmail) {
+                          const duplicateBiz: Business = {
+                            ...selectedContact,
+                            id: `${selectedContact.id}-${Date.now()}-dup`,
+                            contactEmail: secondaryEmail,
+                            founderName: data.founderName || 'Not Found',
+                            linkedin: data.linkedin || selectedContact.linkedin,
+                            instagram: data.instagram || selectedContact.instagram,
+                            phone: data.phone || selectedContact.phone,
+                          };
+                          if (onInjectResult) {
+                            onInjectResult(duplicateBiz);
+                          }
+                        }
                       } catch (e) { alert('Enrich failed'); }
                       finally { setIsModalActionLoading(false); }
                     }}

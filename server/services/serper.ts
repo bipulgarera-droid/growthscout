@@ -70,19 +70,20 @@ const serperSearch = async (query: string): Promise<SerperSearchResult[]> => {
     return data.organic || [];
 };
 
-// Extract email from text
+// Extract one or multiple emails from text
 const extractEmail = (text: string): string | undefined => {
-    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+    const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi;
     const matches = text.match(emailRegex);
-    if (matches) {
-        // Filter out common non-contact emails
-        const filtered = matches.filter(e =>
+    if (matches && matches.length > 0) {
+        const uniqueEmails = Array.from(new Set(matches.map(e => e.toLowerCase())));
+        const filtered = uniqueEmails.filter(e =>
             !e.includes('example') &&
             !e.includes('noreply') &&
             !e.includes('support@') &&
             !e.includes('info@')
         );
-        return filtered[0] || matches[0];
+        const finalEmails = filtered.length > 0 ? filtered : uniqueEmails;
+        return finalEmails.join(', ');
     }
     return undefined;
 };
@@ -91,7 +92,11 @@ const extractEmail = (text: string): string | undefined => {
 const extractPhone = (text: string): string | undefined => {
     const phoneRegex = /(\+?1?[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g;
     const matches = text.match(phoneRegex);
-    return matches ? matches[0] : undefined;
+    if (matches && matches.length > 0) {
+        const uniquePhones = Array.from(new Set(matches.map(p => p.trim())));
+        return uniquePhones.join(', ');
+    }
+    return undefined;
 };
 
 // Common first names for validation (detect if extracted "name" is likely a real person)
@@ -142,40 +147,69 @@ const extractInstagram = (results: SerperSearchResult[]): string | undefined => 
 export const findFounderInfo = async (businessName: string, location?: string): Promise<FounderInfo> => {
     const info: FounderInfo = { sources: [] };
 
-    // Use full address without quotes for a comprehensive search
-    const fullAddress = location || '';
+    // Clean up business name to remove legal entities for better search results
+    const cleanBusinessName = businessName
+        .replace(/\b(Private Limited|Pvt Ltd|Pvt\. Ltd\.|LLC|L\.L\.C\.|Inc|Inc\.|Corporation|Corp|Corp\.|Ltd|Ltd\.|Limited)\b/gi, '')
+        .replace(/[,.]/g, '')
+        .trim();
 
     // Extract just the city name for fallback searches
     let city = '';
     if (location) {
-        const cityMatch = location.match(/,?\s*([A-Za-z\s]+),\s*[A-Z]{2}/);
-        city = cityMatch ? cityMatch[1].trim() : location.split(',')[0].trim();
+        const parts = location.split(',').map(p => p.trim());
+        if (parts.length >= 3) {
+            // Handle "Mumbai, Maharashtra 400079, India" format
+            const maybeStateZip = parts[parts.length - 2];
+            const hasNumbers = /\d/.test(maybeStateZip);
+            city = hasNumbers ? parts[parts.length - 3] : parts[parts.length - 2];
+        } else if (parts.length === 2) {
+            city = parts[0];
+        } else {
+            // Fallback to regex if parsing fails
+            const cityMatch = location.match(/,?\s*([A-Za-z\s]+),\s*[A-Z]{2}/);
+            city = cityMatch ? cityMatch[1].trim() : parts[0];
+        }
+
+        // If the extracted "city" is too long, it's probably an address line. Clear it.
+        if (city && city.split(' ').length > 3) {
+            city = '';
+        }
     }
 
     try {
         // ===== SEARCH 1: General Contact Info =====
-        const contactQuery = `${businessName} email ${city}`;
+        const contactQuery = `${cleanBusinessName} email ${city}`.trim();
         console.log(`\n--- [SERPER PRIMARY] ---`);
         console.log(`[Serper] Executing Query: [ ${contactQuery} ]`);
         const contactResults = await serperSearch(contactQuery);
 
+        const allEmails = new Set<string>();
+        const allPhones = new Set<string>();
+
         for (const result of contactResults) {
-            if (!info.email) info.email = extractEmail(result.snippet);
-            if (!info.phone) info.phone = extractPhone(result.snippet);
+            const extractedEmails = extractEmail(result.snippet);
+            if (extractedEmails) extractedEmails.split(', ').forEach(e => allEmails.add(e));
+
+            const extractedPhones = extractPhone(result.snippet);
+            if (extractedPhones) extractedPhones.split(', ').forEach(p => allPhones.add(p));
+
             if (result.link.includes('/contact') || result.link.includes('/about')) {
                 info.sources.push(result.link);
             }
         }
 
+        if (allEmails.size > 0) info.email = Array.from(allEmails).join(', ');
+        if (allPhones.size > 0) info.phone = Array.from(allPhones).join(', ');
+
         // ===== SEARCH 2: LinkedIn Company Page =====
-        const linkedinQuery = `site:linkedin.com ${businessName} founder ${city}`;
+        const linkedinQuery = `site:linkedin.com ${cleanBusinessName} founder ${city}`.trim();
         console.log(`[Serper] Executing Query: [ ${linkedinQuery} ]`);
         const linkedinResults = await serperSearch(linkedinQuery);
         info.linkedin = extractLinkedIn(linkedinResults);
         if (info.linkedin) info.sources.push(info.linkedin);
 
         // ===== SEARCH 3: Instagram Profile =====
-        const instaQuery = `site:instagram.com ${businessName} ${city}`;
+        const instaQuery = `site:instagram.com ${cleanBusinessName} ${city}`.trim();
         console.log(`[Serper] Executing Query: [ ${instaQuery} ]`);
         const instaResults = await serperSearch(instaQuery);
         info.instagram = extractInstagram(instaResults);

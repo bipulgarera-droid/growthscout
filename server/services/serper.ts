@@ -89,10 +89,10 @@ const extractEmail = (text: string): string | undefined => {
             !e.includes('name@') &&
             !e.includes('fake@')
         );
-        // We prefer specific emails, but if all were filtered out, fallback to unique ones
-        const finalEmails = filtered.length > 0 ? filtered : uniqueEmails;
-        // Limit to max 2 emails as requested
-        return finalEmails.slice(0, 2).join(', ');
+
+        if (filtered.length > 0) {
+            return filtered.slice(0, 2).join(', ');
+        }
     }
     return undefined;
 };

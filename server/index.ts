@@ -160,11 +160,9 @@ app.post('/api/enrich', async (req, res) => {
 
         let apifyData: any = {};
 
-        // 1. Run Apify Contact Scraper FIRST if a website exists
-        if (website) {
-            console.log(`[Enrich API] Starting Apify scrape for ${website}`);
-            apifyData = await scrapeContactInfoApify(website);
-        }
+        // 1. Run Apify Contact Scraper (Google Maps Actor)
+        console.log(`[Enrich API] Starting Apify Maps scrape for ${businessName} - ${location}`);
+        apifyData = await scrapeContactInfoApify(businessName, location, website);
 
         // Check if Apify got everything. If it missed anything, use Serper to fill the exact gaps.
         const needsEmail = !apifyData.email;

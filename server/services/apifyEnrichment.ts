@@ -19,11 +19,14 @@ export interface ApifyContactResult {
 }
 
 /**
- * Uses the vdrmota/contact-info-scraper Apify actor to aggressively scrape
- * contact information directly from a business website.
+ * Uses the lukaskrivka/google-maps-with-contact-details Apify actor to
+ * aggressively extract contact information from Google Maps listings.
  */
-export const scrapeContactInfoApify = async (websiteUrl: string): Promise<ApifyContactResult> => {
-    console.log(`[Apify Scraper] Starting contact extraction for: ${websiteUrl}`);
+export const scrapeContactInfoApify = async (businessName: string, location: string = '', websiteUrl: string = ''): Promise<ApifyContactResult> => {
+    // The actor accepts a Google Maps URL or search keywords.
+    // We'll pass the exact business name + address as a search string.
+    const searchString = `${businessName} ${location}`;
+    console.log(`[Apify Scraper] Starting contact extraction for: ${searchString}`);
     const result: ApifyContactResult = { sources: [] };
 
     if (!APIFY_TOKEN) {
@@ -32,18 +35,17 @@ export const scrapeContactInfoApify = async (websiteUrl: string): Promise<ApifyC
     }
 
     try {
-        const runUrl = `https://api.apify.com/v2/acts/vdrmota~contact-info-scraper/runs?token=${APIFY_TOKEN}`;
+        const runUrl = `https://api.apify.com/v2/acts/lukaskrivka~google-maps-with-contact-details/runs?token=${APIFY_TOKEN}`;
 
-        // Configuration for the scraper (keep maxDepth shallow to save time/cost)
+        // Configuration for the new Google Maps Scraper
         const runRes = await fetch(runUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                startUrls: [{ url: websiteUrl }],
-                maxDepth: 1, // Only check homepage and 1 click deep (like /contact)
-                limit: 10,  // Max pages to scrape
-                considerChildFrames: false,
-                useBrowser: true // Render JS
+                searchStringsArray: [searchString],
+                maxCrawledPlacesPerSearch: 1, // Only get the exact matching business
+                scrapeContactDetails: true,    // CRITICAL: Tells actor to scrape for emails
+                language: "en"
             })
         });
 
@@ -56,7 +58,7 @@ export const scrapeContactInfoApify = async (websiteUrl: string): Promise<ApifyC
         const datasetId = runData.data.defaultDatasetId;
         const runId = runData.data.id;
 
-        // Poll for completion (Wait up to 60s since full browser scrape is slow)
+        // Poll for completion
         let isFinished = false;
         let retries = 0;
         while (!isFinished && retries < 30) {
@@ -74,7 +76,7 @@ export const scrapeContactInfoApify = async (websiteUrl: string): Promise<ApifyC
         }
 
         if (!isFinished) {
-            console.log(`[Apify Scraper] Run timed out or failed for ${websiteUrl}`);
+            console.log(`[Apify Scraper] Run timed out or failed for ${searchString}`);
             return result;
         }
 
@@ -83,53 +85,42 @@ export const scrapeContactInfoApify = async (websiteUrl: string): Promise<ApifyC
         const items = await datasetRes.json();
 
         if (items && items.length > 0) {
-            // Merge all found items (different pages might have different contacts)
-            const allEmails = new Set<string>();
-            const allPhones = new Set<string>();
+            const item = items[0]; // Assuming best match is the first item
 
-            for (const item of items) {
-                // Emails
-                if (item.emails) {
-                    item.emails.forEach((e: string) => allEmails.add(e));
-                }
-
-                // Phones
-                if (item.phones) {
-                    item.phones.forEach((p: string) => allPhones.add(p));
-                }
-
-                // Social profiles
-                if (item.linkedin && !result.linkedin) result.linkedin = Array.isArray(item.linkedin) ? item.linkedin[0] : item.linkedin;
-                if (item.instagram && !result.instagram) result.instagram = Array.isArray(item.instagram) ? item.instagram[0] : item.instagram;
-                if (item.facebook && !result.facebook) result.facebook = Array.isArray(item.facebook) ? item.facebook[0] : item.facebook;
-                if (item.twitter && !result.twitter) result.twitter = Array.isArray(item.twitter) ? item.twitter[0] : item.twitter;
+            if (item.emails && item.emails.length > 0) {
+                // Filter generic emails
+                const filteredEmails = item.emails.filter((e: string) =>
+                    !e.includes('example') &&
+                    !e.includes('noreply') &&
+                    !e.includes('godaddy') &&
+                    !e.includes('wix')
+                );
+                result.email = filteredEmails.length > 0 ? filteredEmails[0] : item.emails[0];
             }
 
-            // Clean & filter generic emails out
-            const filteredEmails = Array.from(allEmails).filter(e =>
-                !e.includes('example') &&
-                !e.includes('noreply') &&
-                !e.includes('godaddy') &&
-                !e.includes('wix')
-            );
+            if (item.phoneUnformatted || item.phone) result.phone = item.phoneUnformatted || item.phone;
+            if (item.linkedin) result.linkedin = item.linkedin;
+            if (item.instagram) result.instagram = item.instagram;
+            if (item.facebook) result.facebook = item.facebook;
+            if (item.twitter) result.twitter = item.twitter;
 
-            if (filteredEmails.length > 0) result.email = filteredEmails[0];
-            if (allPhones.size > 0) result.phone = Array.from(allPhones)[0];
+            // Add the website or Gmaps URL as the source if available
+            if (item.website) result.sources.push(item.website);
+            else if (item.url) result.sources.push(item.url);
+            else if (websiteUrl) result.sources.push(websiteUrl);
 
-            result.sources.push(websiteUrl);
-
-            console.log(`[Apify Scraper] Successfully extracted data for ${websiteUrl}:`, {
+            console.log(`[Apify Scraper] Successfully extracted data from maps for ${searchString}:`, {
                 email: result.email ? '✅' : '❌',
                 phone: result.phone ? '✅' : '❌',
                 linkedin: result.linkedin ? '✅' : '❌',
                 instagram: result.instagram ? '✅' : '❌',
             });
         } else {
-            console.log(`[Apify Scraper] No contact data found on ${websiteUrl}`);
+            console.log(`[Apify Scraper] No contact data found on Maps for ${searchString}`);
         }
 
     } catch (error) {
-        console.error(`[Apify Scraper] Error scraping ${websiteUrl}:`, error);
+        console.error(`[Apify Scraper] Error scraping ${searchString}:`, error);
     }
 
     return result;

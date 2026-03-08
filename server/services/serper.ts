@@ -154,7 +154,7 @@ export const findFounderInfo = async (businessName: string, location?: string): 
 
     try {
         // ===== SEARCH 1: General Contact Info =====
-        const contactQuery = `"${businessName}" ${fullAddress} email OR phone OR contact`;
+        const contactQuery = `${businessName} ${fullAddress} email OR phone OR contact`;
         console.log(`\n--- [SERPER FALLBACK] ---`);
         console.log(`[Serper] Executing Query: [ ${contactQuery} ]`);
         const contactResults = await serperSearch(contactQuery);
@@ -168,14 +168,14 @@ export const findFounderInfo = async (businessName: string, location?: string): 
         }
 
         // ===== SEARCH 2: LinkedIn Company Page =====
-        const linkedinQuery = `site:linkedin.com/company "${businessName}" ${city}`;
+        const linkedinQuery = `site:linkedin.com ${businessName} founder ${city}`;
         console.log(`[Serper] Executing Query: [ ${linkedinQuery} ]`);
         const linkedinResults = await serperSearch(linkedinQuery);
         info.linkedin = extractLinkedIn(linkedinResults);
         if (info.linkedin) info.sources.push(info.linkedin);
 
         // ===== SEARCH 3: Instagram Profile =====
-        const instaQuery = `site:instagram.com "${businessName}" ${city}`;
+        const instaQuery = `site:instagram.com ${businessName} ${city}`;
         console.log(`[Serper] Executing Query: [ ${instaQuery} ]`);
         const instaResults = await serperSearch(instaQuery);
         info.instagram = extractInstagram(instaResults);

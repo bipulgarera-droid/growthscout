@@ -1475,34 +1475,41 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
                       try {
                         const data = await enrichBusiness(selectedContact.name, selectedContact.address, selectedContact.website);
 
-                        // Parse emails to handle multiple
-                        const emails = data.email ? data.email.split(',').map(e => e.trim()).filter(Boolean) : [];
-                        const primaryEmail = emails.length > 0 ? emails[0] : selectedContact.contactEmail;
-                        const secondaryEmail = emails.length > 1 ? emails[1] : null;
+                        // Parse emails and phones to handle multiple comma-separated values
+                        const emails = data.email ? data.email.split(',').map((e: string) => e.trim()).filter(Boolean) : (selectedContact.contactEmail ? [selectedContact.contactEmail] : []);
+                        const phones = data.phone ? data.phone.split(',').map((p: string) => p.trim()).filter(Boolean) : (selectedContact.phone ? [selectedContact.phone] : []);
 
-                        // Update local modal state + global store with primary email
+                        const emailList = emails.length > 0 ? emails : [undefined];
+                        const phoneList = phones.length > 0 ? phones : [undefined];
+                        const maxLen = Math.max(emailList.length, phoneList.length);
+
+                        // Update local modal state + global store with primary pair
                         const updated = {
                           ...selectedContact,
                           founderName: data.founderName || 'Not Found',
                           linkedin: data.linkedin || selectedContact.linkedin,
-                          contactEmail: primaryEmail,
                           instagram: data.instagram || selectedContact.instagram,
-                          phone: data.phone || selectedContact.phone,
+                          contactEmail: emailList[0],
+                          phone: phoneList[0],
                         };
                         setSelectedContact(updated);
                         onUpdateResult(updated.id, updated);
 
-                        // If a second email exists, duplicate the entire business record
-                        if (secondaryEmail) {
+                        // Generate duplicate entries for the rest of the combinations
+                        for (let i = 1; i < maxLen; i++) {
+                          const e = emailList[i] || emailList[0];
+                          const p = phoneList[i] || phoneList[0];
+
                           const duplicateBiz: Business = {
                             ...selectedContact,
-                            id: `${selectedContact.id}-${Date.now()}-dup`,
-                            contactEmail: secondaryEmail,
+                            id: `${selectedContact.id}-${Date.now()}-dup-${i}`,
                             founderName: data.founderName || 'Not Found',
                             linkedin: data.linkedin || selectedContact.linkedin,
                             instagram: data.instagram || selectedContact.instagram,
-                            phone: data.phone || selectedContact.phone,
+                            contactEmail: e,
+                            phone: p,
                           };
+
                           if (onInjectResult) {
                             onInjectResult(duplicateBiz);
                           }

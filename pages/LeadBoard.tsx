@@ -44,27 +44,32 @@ const LeadBoard: React.FC<LeadBoardProps> = ({ leads, updateStatus, updateBusine
     try {
       const data = await enrichBusiness(lead.name, lead.address, lead.website);
 
-      const emails = data.email ? data.email.split(',').map(e => e.trim()).filter(Boolean) : [];
-      const primaryEmail = emails.length > 0 ? emails[0] : lead.contactEmail;
-      const secondaryEmail = emails.length > 1 ? emails[1] : null;
+      const emails = data.email ? data.email.split(',').map((e: string) => e.trim()).filter(Boolean) : (lead.contactEmail ? [lead.contactEmail] : []);
+      const phones = data.phone ? data.phone.split(',').map((p: string) => p.trim()).filter(Boolean) : (lead.phone ? [lead.phone] : []);
+
+      const emailList = emails.length > 0 ? emails : [undefined];
+      const phoneList = phones.length > 0 ? phones : [undefined];
+      const maxLen = Math.max(emailList.length, phoneList.length);
 
       updateBusiness(lead.id, {
         founderName: data.founderName || undefined,
         linkedin: data.linkedin || undefined,
-        contactEmail: primaryEmail,
         instagram: data.instagram || undefined,
-        phone: data.phone || lead.phone,
+        contactEmail: emailList[0],
+        phone: phoneList[0],
       });
 
-      if (secondaryEmail) {
+      for (let i = 1; i < maxLen; i++) {
+        const e = emailList[i] || emailList[0];
+        const p = phoneList[i] || phoneList[0];
         const duplicateBiz: Business = {
           ...lead,
-          id: `${lead.id}-${Date.now()}-dup`,
-          contactEmail: secondaryEmail,
+          id: `${lead.id}-${Date.now()}-dup-${i}`,
           founderName: data.founderName || undefined,
           linkedin: data.linkedin || undefined,
           instagram: data.instagram || undefined,
-          phone: data.phone || lead.phone,
+          contactEmail: e,
+          phone: p,
         };
         addLead(duplicateBiz);
       }

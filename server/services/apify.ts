@@ -74,18 +74,34 @@ export const discoverBusinesses = async (params: BusinessSearchParams): Promise<
     const rawResults: any[] = await response.json();
     console.log(`Apify returned ${rawResults.length} results`);
 
-    // Map to our interface
-    const businesses: DiscoveredBusiness[] = rawResults.map((item: any) => ({
-        name: item.title || item.name || 'Unknown',
-        address: item.address || item.street || '',
-        phone: item.phone || item.phoneUnformatted,
-        website: item.website || item.url,
-        rating: item.totalScore || item.rating,
-        reviewCount: item.reviewsCount || item.reviews,
-        category: item.categoryName || item.category,
-        placeId: item.placeId,
-        imageUrl: item.imageUrl || (item.images && item.images[0]),
-    }));
+    // Map to our interface and split on comma-separated phones
+    const businesses: DiscoveredBusiness[] = [];
+    rawResults.forEach((item: any) => {
+        const phoneRaw = item.phone || item.phoneUnformatted || '';
+        const baseBz: DiscoveredBusiness = {
+            name: item.title || item.name || 'Unknown',
+            address: item.address || item.street || '',
+            website: item.website || item.url,
+            rating: item.totalScore || item.rating,
+            reviewCount: item.reviewsCount || item.reviews,
+            category: item.categoryName || item.category,
+            placeId: item.placeId,
+            imageUrl: item.imageUrl || (item.images && item.images[0]),
+        };
+
+        if (phoneRaw && phoneRaw.includes(',')) {
+            const phones = phoneRaw.split(',').map((p: string) => p.trim()).filter(Boolean);
+            if (phones.length > 0) {
+                phones.forEach((p: string) => {
+                    businesses.push({ ...baseBz, phone: p });
+                });
+            } else {
+                businesses.push({ ...baseBz, phone: phoneRaw });
+            }
+        } else {
+            businesses.push({ ...baseBz, phone: phoneRaw });
+        }
+    });
 
     return businesses;
 };

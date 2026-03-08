@@ -221,30 +221,49 @@ export const findFounderInfo = async (businessName: string, location?: string): 
     }
 
     try {
-        // ===== SEARCH 1: General Contact Info =====
-        const contactQuery = `${cleanBusinessName} email ${city}`.trim();
+        // ===== SEARCH 1A: Email Search =====
+        const emailQuery = `${cleanBusinessName} email ${city}`.trim();
         console.log(`\n--- [SERPER PRIMARY] ---`);
-        console.log(`[Serper] Executing Query: [ ${contactQuery} ]`);
-        const contactResults = await serperSearch(contactQuery);
+        console.log(`[Serper] Executing Query: [ ${emailQuery} ]`);
+        const emailResults = await serperSearch(emailQuery);
 
         const allEmails = new Set<string>();
         const allPhones = new Set<string>();
 
         const countryCode = detectCountryCode(location);
 
-        for (const result of contactResults) {
+        for (const result of emailResults) {
             const extractedEmails = extractEmail(result.snippet);
             if (extractedEmails) extractedEmails.split(', ').forEach(e => allEmails.add(e));
 
+            // Incidentally extract phone if it appears here
             const extractedPhones = extractPhone(result.snippet, countryCode);
             if (extractedPhones) extractedPhones.split(', ').forEach(p => allPhones.add(p));
 
             if (result.link.includes('/contact') || result.link.includes('/about')) {
-                info.sources.push(result.link);
+                if (!info.sources.includes(result.link)) info.sources.push(result.link);
             }
         }
 
-        if (allEmails.size > 0) info.email = Array.from(allEmails).join(', ');
+        // ===== SEARCH 1B: Phone Search (Explicit) =====
+        const phoneQuery = `${cleanBusinessName} phone number ${city}`.trim();
+        console.log(`[Serper] Executing Query: [ ${phoneQuery} ]`);
+        const phoneResults = await serperSearch(phoneQuery);
+
+        for (const result of phoneResults) {
+            const extractedPhones = extractPhone(result.snippet, countryCode);
+            if (extractedPhones) extractedPhones.split(', ').forEach(p => allPhones.add(p));
+
+            // Incidentally extract email if it appears here
+            const extractedEmails = extractEmail(result.snippet);
+            if (extractedEmails) extractedEmails.split(', ').forEach(e => allEmails.add(e));
+
+            if (result.link.includes('/contact') || result.link.includes('/about')) {
+                if (!info.sources.includes(result.link)) info.sources.push(result.link);
+            }
+        }
+
+        if (allEmails.size > 0) info.email = Array.from(allEmails).slice(0, 2).join(', ');
         if (allPhones.size > 0) info.phone = Array.from(allPhones).join(', ');
 
         // ===== SEARCH 2: LinkedIn Company Page =====
@@ -291,10 +310,16 @@ export const quickEnrich = async (businessName: string, website?: string): Promi
             }
         }
 
-        // General search
-        const results = await serperSearch(`"${businessName}" contact email phone`);
-        for (const result of results) {
+        // General search (Email)
+        const emailResults = await serperSearch(`"${businessName}" contact email`);
+        for (const result of emailResults) {
             if (!info.email) info.email = extractEmail(result.snippet);
+            if (!info.phone) info.phone = extractPhone(result.snippet);
+        }
+
+        // General search (Phone)
+        const phoneResults = await serperSearch(`"${businessName}" contact phone`);
+        for (const result of phoneResults) {
             if (!info.phone) info.phone = extractPhone(result.snippet);
         }
 

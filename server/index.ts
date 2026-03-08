@@ -170,22 +170,31 @@ app.post('/api/enrich', async (req, res) => {
         // 2. Assess Email Confidence
         let isHighConfidenceEmail = false;
         if (serperData.email) {
-            const emailDomain = serperData.email.split('@')[1]?.toLowerCase();
-            if (website) {
-                try {
-                    const hostname = new URL(website.startsWith('http') ? website : `https://${website}`).hostname.toLowerCase();
-                    const siteDomain = hostname.startsWith('www.') ? hostname.substring(4) : hostname;
-                    if (emailDomain === siteDomain || siteDomain.endsWith(emailDomain)) {
-                        isHighConfidenceEmail = true;
+            // Handle multiple comma-separated emails
+            const emails = serperData.email.split(',').map((e: string) => e.trim());
+
+            for (const email of emails) {
+                const emailDomain = email.split('@')[1]?.toLowerCase();
+                if (!emailDomain) continue;
+
+                if (website) {
+                    try {
+                        const hostname = new URL(website.startsWith('http') ? website : `https://${website}`).hostname.toLowerCase();
+                        const siteDomain = hostname.startsWith('www.') ? hostname.substring(4) : hostname;
+                        if (emailDomain === siteDomain || siteDomain.endsWith(emailDomain)) {
+                            isHighConfidenceEmail = true;
+                            break; // One high confidence email is enough to skip Apify
+                        }
+                    } catch {
+                        // Ignore URL parsing errors
                     }
-                } catch {
-                    // Ignore URL parsing errors
-                }
-            } else {
-                // Without a website to check against, if it's not a generic email provider, it's Decent Confidence
-                const genericDomains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'aol.com'];
-                if (emailDomain && !genericDomains.includes(emailDomain)) {
-                    isHighConfidenceEmail = true;
+                } else {
+                    // Without a website, non-generic domains are considered Good Confidence
+                    const genericDomains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'aol.com'];
+                    if (!genericDomains.includes(emailDomain)) {
+                        isHighConfidenceEmail = true;
+                        break;
+                    }
                 }
             }
         }
@@ -200,16 +209,24 @@ app.post('/api/enrich', async (req, res) => {
             apifyData = await scrapeContactInfoApify(businessName, location, website);
         }
 
-        // 4. Smart Merge (Apify overwrites low-confidence Serper details if it finds better ones)
+        // 4. Smart Merge (Combine all found emails and phones instead of overwriting)
+        const mergeStrings = (str1: string | undefined, str2: string | undefined) => {
+            const arr = new Set<string>();
+            if (str1) str1.split(',').forEach(s => arr.add(s.trim()));
+            if (str2) str2.split(',').forEach(s => arr.add(s.trim()));
+            if (arr.size === 0) return undefined;
+            return Array.from(arr).join(', ');
+        };
+
         const mergedInfo = {
             founderName: undefined, // Explicitly removed per user request
-            email: apifyData.email || serperData.email,
-            phone: apifyData.phone || serperData.phone,
+            email: mergeStrings(apifyData.email, serperData.email),
+            phone: mergeStrings(apifyData.phone, serperData.phone),
             linkedin: apifyData.linkedin || serperData.linkedin,
             instagram: apifyData.instagram || serperData.instagram,
             facebook: apifyData.facebook || serperData.facebook,
             twitter: apifyData.twitter || serperData.twitter,
-            sources: [...(apifyData.sources || []), ...(serperData.sources || [])]
+            sources: Array.from(new Set([...(apifyData.sources || []), ...(serperData.sources || [])]))
         };
 
         console.log('[Enrich API] Returning Merged Info:', JSON.stringify(mergedInfo, null, 2));

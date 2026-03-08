@@ -154,8 +154,8 @@ export const findFounderInfo = async (businessName: string, location?: string): 
 
     try {
         // ===== SEARCH 1: General Contact Info =====
-        const contactQuery = `${businessName} ${fullAddress} email OR phone OR contact`;
-        console.log(`\n--- [SERPER FALLBACK] ---`);
+        const contactQuery = `${businessName} email ${city}`;
+        console.log(`\n--- [SERPER PRIMARY] ---`);
         console.log(`[Serper] Executing Query: [ ${contactQuery} ]`);
         const contactResults = await serperSearch(contactQuery);
 

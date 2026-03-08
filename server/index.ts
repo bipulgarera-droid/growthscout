@@ -158,32 +158,49 @@ app.post('/api/enrich', async (req, res) => {
             return;
         }
 
-        let apifyData: any = {};
-
-        // 1. Run Apify Contact Scraper (Google Maps Actor)
-        console.log(`[Enrich API] Starting Apify Maps scrape for ${businessName} - ${location}`);
-        apifyData = await scrapeContactInfoApify(businessName, location, website);
-
-        // Check if Apify got everything. If it missed anything, use Serper to fill the exact gaps.
-        const needsEmail = !apifyData.email;
-        const needsLinkedin = !apifyData.linkedin;
-        const needsInstagram = !apifyData.instagram;
-        const needsPhone = !apifyData.phone;
-
+        // 1. Run Serper (Google Search) FIRST
+        console.log(`\n[Enrich API] Starting Serper enrich for ${businessName} - ${location}`);
         let serperData: any = {};
-
-        if (needsEmail || needsLinkedin || needsInstagram || needsPhone) {
-            console.log(`[Enrich API] Apify missing some details. Falling back to Serper.`);
-            if (quick) {
-                serperData = await quickEnrich(businessName, website);
-            } else {
-                serperData = await findFounderInfo(businessName, location);
-            }
+        if (quick) {
+            serperData = await quickEnrich(businessName, website);
         } else {
-            console.log(`[Enrich API] Apify found all required contact details! Skipping Serper.`);
+            serperData = await findFounderInfo(businessName, location);
         }
 
-        // 3. Smart Merge (Apify overrides Serper for social/contact details)
+        // 2. Assess Email Confidence
+        let isHighConfidenceEmail = false;
+        if (serperData.email) {
+            const emailDomain = serperData.email.split('@')[1]?.toLowerCase();
+            if (website) {
+                try {
+                    const hostname = new URL(website.startsWith('http') ? website : `https://${website}`).hostname.toLowerCase();
+                    const siteDomain = hostname.startsWith('www.') ? hostname.substring(4) : hostname;
+                    if (emailDomain === siteDomain || siteDomain.endsWith(emailDomain)) {
+                        isHighConfidenceEmail = true;
+                    }
+                } catch {
+                    // Ignore URL parsing errors
+                }
+            } else {
+                // Without a website to check against, if it's not a generic email provider, it's Decent Confidence
+                const genericDomains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'aol.com'];
+                if (emailDomain && !genericDomains.includes(emailDomain)) {
+                    isHighConfidenceEmail = true;
+                }
+            }
+        }
+
+        let apifyData: any = {};
+
+        // 3. Run Apify Contact Scraper (Google Maps Actor) ONLY as Fallback
+        if (isHighConfidenceEmail) {
+            console.log(`[Enrich API] High confidence email found by Serper (${serperData.email}). Skipping Apify Maps.`);
+        } else {
+            console.log(`[Enrich API] Low confidence or missing email from Serper. Falling back to Apify Maps Scraper...`);
+            apifyData = await scrapeContactInfoApify(businessName, location, website);
+        }
+
+        // 4. Smart Merge (Apify overwrites low-confidence Serper details if it finds better ones)
         const mergedInfo = {
             founderName: undefined, // Explicitly removed per user request
             email: apifyData.email || serperData.email,

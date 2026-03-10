@@ -432,37 +432,23 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
     try {
       const data = await enrichBusiness(biz.name, biz.address, biz.website);
 
-      // Parse emails to handle multiple
-      const emails = data.email ? data.email.split(',').map(e => e.trim()).filter(Boolean) : [];
-      const primaryEmail = emails.length > 0 ? emails[0] : biz.contactEmail;
-      const secondaryEmail = emails.length > 1 ? emails[1] : null;
+      // Parse emails and phones — handle multiple comma-separated values
+      const emails = data.email ? data.email.split(',').map((e: string) => e.trim()).filter(Boolean) : (biz.contactEmail ? [biz.contactEmail] : []);
+      const phones = data.phone ? data.phone.split(',').map((p: string) => p.trim()).filter(Boolean) : (biz.phone ? [biz.phone] : []);
 
-      // Update Result in Global Store with Primary Email
+      const emailList = emails.length > 0 ? emails : [undefined];
+      const phoneList = phones.length > 0 ? phones : [undefined];
+      const maxLen = Math.max(emailList.length, phoneList.length);
+
+      // Update the primary record (index 0)
       onUpdateResult(biz.id, {
         founderName: data.founderName || 'Not Found',
         linkedin: data.linkedin || biz.linkedin,
-        contactEmail: primaryEmail,
+        contactEmail: emailList[0],
         instagram: data.instagram || biz.instagram,
-        phone: data.phone || biz.phone,
+        phone: phoneList[0],
         address: data.address || biz.address,
       });
-
-      // If a second email exists, duplicate the entire business record for that specific email
-      if (secondaryEmail) {
-        const duplicateBiz: Business = {
-          ...biz,
-          id: `${biz.id}-${Date.now()}-dup`, // Ensure unique ID
-          contactEmail: secondaryEmail,
-          founderName: data.founderName || 'Not Found',
-          linkedin: data.linkedin || biz.linkedin,
-          instagram: data.instagram || biz.instagram,
-          phone: data.phone || biz.phone,
-          address: data.address || biz.address,
-        };
-        if (onInjectResult) {
-          onInjectResult(duplicateBiz);
-        }
-      }
 
       // Also update the modal view if it's the same business
       if (selectedContact && selectedContact.id === biz.id) {
@@ -470,11 +456,30 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
           ...selectedContact,
           founderName: data.founderName || 'Not Found',
           linkedin: data.linkedin || biz.linkedin,
-          contactEmail: primaryEmail,
+          contactEmail: emailList[0],
           instagram: data.instagram || biz.instagram,
-          phone: data.phone || biz.phone,
+          phone: phoneList[0],
           address: data.address || biz.address,
         });
+      }
+
+      // For any additional email or phone, inject a duplicate record
+      for (let i = 1; i < maxLen; i++) {
+        const dupEmail = emailList[i] || emailList[0];
+        const dupPhone = phoneList[i] || phoneList[0];
+        const duplicateBiz: Business = {
+          ...biz,
+          id: `${biz.id}-${Date.now()}-dup-${i}`,
+          founderName: data.founderName || 'Not Found',
+          linkedin: data.linkedin || biz.linkedin,
+          instagram: data.instagram || biz.instagram,
+          contactEmail: dupEmail,
+          phone: dupPhone,
+          address: data.address || biz.address,
+        };
+        if (onInjectResult) {
+          onInjectResult(duplicateBiz);
+        }
       }
 
     } catch (e) {

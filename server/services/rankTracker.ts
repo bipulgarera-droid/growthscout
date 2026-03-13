@@ -80,12 +80,10 @@ export const searchRankings = async (
     const authHeader = 'Basic ' + Buffer.from(`${DATAFORSEO_LOGIN}:${DATAFORSEO_PASSWORD}`).toString('base64');
 
     const searchPayload: any = {
-        keyword: keyword,
+        keyword: `${keyword} in ${city}`, // Google Maps handles "X in Y" universally
         language_code: 'en',
-        location_name: city, // Use DataForSEO's built-in robust location names
         depth: depth,
         device: 'desktop'
-        // Removing `search_this_area` and `location_coordinate` ensures Google searches the entire broader city region linearly until reaching `depth`, rather than capping at 15-20 local pinpoint results.
     };
 
     const response = await fetch(

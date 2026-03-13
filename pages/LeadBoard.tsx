@@ -64,7 +64,7 @@ const LeadBoard: React.FC<LeadBoardProps> = ({ leads, updateStatus, updateBusine
         const p = phoneList[i] || phoneList[0];
         const duplicateBiz: Business = {
           ...lead,
-          id: `${lead.id}-${Date.now()}-dup-${i}`,
+          id: crypto.randomUUID(), // Must be a valid UUID for Supabase
           founderName: data.founderName || undefined,
           linkedin: data.linkedin || undefined,
           instagram: data.instagram || undefined,

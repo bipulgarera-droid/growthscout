@@ -469,7 +469,7 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
         const dupPhone = phoneList[i] || phoneList[0];
         const duplicateBiz: Business = {
           ...biz,
-          id: `${biz.id}-${Date.now()}-dup-${i}`,
+          id: crypto.randomUUID(), // Must be a valid UUID for Supabase
           founderName: data.founderName || 'Not Found',
           linkedin: data.linkedin || biz.linkedin,
           instagram: data.instagram || biz.instagram,

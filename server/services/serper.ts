@@ -73,7 +73,8 @@ const serperSearch = async (query: string): Promise<SerperSearchResult[]> => {
 };
 
 // Extract one or multiple emails from text
-const extractEmail = (text: string): string | undefined => {
+const extractEmail = (text: string | undefined): string | undefined => {
+    if (!text) return undefined;
     const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi;
     const matches = text.match(emailRegex);
     if (matches && matches.length > 0) {
@@ -113,7 +114,8 @@ const detectCountryCode = (location?: string): string => {
 };
 
 // Extract and format phone from text using google-libphonenumber
-const extractPhone = (text: string, defaultCountry: string = 'US'): string | undefined => {
+const extractPhone = (text: string | undefined, defaultCountry: string = 'US'): string | undefined => {
+    if (!text) return undefined;
     // A broad regex to catch phone-like sequences in snippets before validating them
     const potentialPhonesRegex = /(\+?\d{1,4}?[-.\s]?\(?\d{1,4}?\)?[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4})/g;
     const matches = text.match(potentialPhonesRegex);
@@ -191,11 +193,20 @@ const extractInstagram = (results: SerperSearchResult[]): string | undefined => 
 export const findFounderInfo = async (businessName: string, location?: string): Promise<FounderInfo> => {
     const info: FounderInfo = { sources: [] };
 
-    // Clean up business name to remove legal entities for better search results
-    const cleanBusinessName = businessName
+    // Clean up business name: 
+    // 1. Remove legal entities
+    // 2. Remove keyword stuffing after pipes | or hyphens - (common in spammy GMB names)
+    let cleanBusinessName = businessName
+        .split('|')[0] // Take only the first part before a pipe
+        .split(' - ')[0] // Take only the first part before a spaced hyphen
         .replace(/\b(Private Limited|Pvt Ltd|Pvt\. Ltd\.|LLC|L\.L\.C\.|Inc|Inc\.|Corporation|Corp|Corp\.|Ltd|Ltd\.|Limited)\b/gi, '')
         .replace(/[,.]/g, '')
         .trim();
+    
+    // Fallback if the cleaning removed everything
+    if (!cleanBusinessName) {
+        cleanBusinessName = businessName.split('|')[0].trim();
+    }
 
     // Extract just the city name for fallback searches
     let city = '';

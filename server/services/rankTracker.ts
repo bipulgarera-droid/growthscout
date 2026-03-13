@@ -80,11 +80,15 @@ export const searchRankings = async (
     const authHeader = 'Basic ' + Buffer.from(`${DATAFORSEO_LOGIN}:${DATAFORSEO_PASSWORD}`).toString('base64');
 
     const searchPayload: any = {
-        keyword: `${keyword} in ${city}`, // Google Maps handles "X in Y" universally
+        keyword: `${keyword} in ${city}`, // "med spa in Dubai, UAE"
         language_code: 'en',
         depth: depth,
         device: 'desktop'
     };
+
+    if (location_coordinate) {
+        searchPayload.location_coordinate = location_coordinate; // "25.0742823,55.1885387,12z"
+    }
 
     const response = await fetch(
         'https://api.dataforseo.com/v3/serp/google/maps/live/advanced',

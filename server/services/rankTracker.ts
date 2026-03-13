@@ -82,16 +82,11 @@ export const searchRankings = async (
     const searchPayload: any = {
         keyword: keyword,
         language_code: 'en',
+        location_name: city, // Use DataForSEO's built-in robust location names
         depth: depth,
-        device: 'desktop',
-        search_this_area: true // Forces searching the whole area
+        device: 'desktop'
+        // Removing `search_this_area` and `location_coordinate` ensures Google searches the entire broader city region linearly until reaching `depth`, rather than capping at 15-20 local pinpoint results.
     };
-
-    if (location_coordinate) {
-        searchPayload.location_coordinate = location_coordinate;
-    } else {
-        searchPayload.keyword = `${keyword} in ${city}`; // Fallback if geocoding fails
-    }
 
     const response = await fetch(
         'https://api.dataforseo.com/v3/serp/google/maps/live/advanced',

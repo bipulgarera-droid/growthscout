@@ -439,6 +439,8 @@ app.post('/api/pipeline/enrich', async (req, res) => {
             try {
                 const enriched = await findFounderInfo(lead.name, lead.address);
                 results[lead.id] = enriched;
+                // Add a deliberate 1-second delay after every lead to respect Serper 60rpm rate limit
+                await new Promise(r => setTimeout(r, 1000));
             } catch (e) {
                 console.error(`Enrich failed for ${lead.name}:`, e);
                 results[lead.id] = { error: 'Enrichment failed' };

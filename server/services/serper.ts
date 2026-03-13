@@ -45,31 +45,45 @@ const serperPlacesSearch = async (query: string): Promise<any[]> => {
 };
 
 // Generic Serper search
-const serperSearch = async (query: string): Promise<SerperSearchResult[]> => {
-    console.log(`[Serper] Searching for: "${query}"`); // Added Log
+export const serperSearch = async (query: string, retries = 3): Promise<any> => {
     if (!SERPER_API_KEY) {
         throw new Error("Missing SERPER_API_KEY in environment variables");
     }
 
-    const response = await fetch('https://google.serper.dev/search', {
-        method: 'POST',
-        headers: {
-            'X-API-KEY': SERPER_API_KEY,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            q: query,
-            num: 10
-        })
-    });
+    for (let i = 0; i < retries; i++) {
+        try {
+            const response = await fetch('https://google.serper.dev/search', {
+                method: 'POST',
+                headers: {
+                    'X-API-KEY': SERPER_API_KEY,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    q: query,
+                    num: 10
+                })
+            });
 
-    if (!response.ok) {
-        throw new Error(`Serper API error: ${response.statusText}`);
+            if (response.status === 429) {
+                console.warn(`[Serper] 429 Too Many Requests. Retrying in ${2000 * Math.pow(2, i)}ms...`);
+                await new Promise(r => setTimeout(r, 2000 * Math.pow(2, i)));
+                continue;
+            }
+
+            if (!response.ok) {
+                throw new Error(`Serper API error: ${response.statusText}`);
+            }
+
+            const data: any = await response.json();
+            console.log(`[Serper] Found ${data.organic?.length || 0} results for: "${query}"`);
+            return data.organic || [];
+        } catch (e: any) {
+            if (i === retries - 1) throw e;
+            console.warn(`[Serper] Request failed, retrying... (${e.message})`);
+            await new Promise(r => setTimeout(r, 2000 * Math.pow(2, i)));
+        }
     }
-
-    const data: any = await response.json();
-    console.log(`[Serper] Found ${data.organic?.length || 0} results for: "${query}"`);
-    return data.organic || [];
+    return [];
 };
 
 // Extract one or multiple emails from text

@@ -751,6 +751,8 @@ app.post('/api/push-to-outreach', async (req, res) => {
                 phone: lead.phone || null,
                 website: lead.website || lead.original_url || null,
                 category: lead.category || 'Unknown',
+                location: lead.search_location || lead.address || null,
+                niche: lead.category || null,
                 bio,
                 pagespeed_mobile: lead.pagespeed_mobile || null,
                 pagespeed_desktop: lead.pagespeed_desktop || null,
@@ -764,6 +766,8 @@ app.post('/api/push-to-outreach', async (req, res) => {
                     whatsapp_verified: lead.whatsapp_verified,
                     search_query: lead.search_query,
                     search_location: lead.search_location,
+                    category: lead.category,
+                    niche: lead.category,
                 }
             };
         });

@@ -106,7 +106,7 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
 
   // Bulk Analyze Handler
   const handleBulkAnalyze = async () => {
-    const selected = results.filter(r => selectedIds.has(r.id) && r.website);
+    const selected = results.filter(r => selectedIds.has(r.id) && r.website && !r.auditResult);
     if (selected.length === 0) {
       alert('No businesses with websites selected');
       return;
@@ -826,9 +826,16 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
                 <button
                   onClick={async () => {
                     const selected = results.filter(r => selectedIds.has(r.id));
+                    const toEnrich = selected.filter(biz => !biz.founderName || biz.founderName === 'Not Found');
+                    
+                    if (toEnrich.length === 0) {
+                      alert('Selected leads are already enriched or marked as Not Found.');
+                      return;
+                    }
+
                     // Process sequentially or in parallel? Parallel is better for speed but might hit rate limits.
                     // Let's do parallel with Promise.all
-                    await Promise.all(selected.map(biz => handleFindFounder(biz)));
+                    await Promise.all(toEnrich.map(biz => handleFindFounder(biz)));
                   }}
                   className="flex items-center gap-2 text-white bg-indigo-600 border border-indigo-600 px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 shadow-sm transition-colors animate-fade-in font-medium"
                 >

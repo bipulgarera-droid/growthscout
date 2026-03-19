@@ -366,7 +366,7 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
       const name = manualInput.name || hostname.replace('www.', '');
 
       const newLead: Business = {
-        id: `manual-${Date.now()}`,
+        id: crypto.randomUUID(),
         name: name,
         address: manualInput.city || 'Unknown Location',
         website: manualInput.url,

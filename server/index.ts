@@ -685,9 +685,16 @@ app.post('/api/push-to-outreach', async (req, res) => {
         return res.status(500).json({ error: 'OUTREACH_API_URL not configured. Set it in environment variables.' });
     }
     try {
-        const { leadIds, outreachProjectId } = req.body;
-        if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
+        const { leadIds: rawLeadIds, outreachProjectId } = req.body;
+        if (!rawLeadIds || !Array.isArray(rawLeadIds) || rawLeadIds.length === 0) {
             return res.status(400).json({ error: 'leadIds array required' });
+        }
+
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const leadIds = rawLeadIds.filter(id => uuidRegex.test(id));
+
+        if (leadIds.length === 0) {
+            return res.status(400).json({ error: 'No valid UUIDs provided. Please ensure your leads are synced to the database first.' });
         }
         if (!outreachProjectId) {
             return res.status(400).json({ error: 'outreachProjectId required' });

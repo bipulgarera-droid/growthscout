@@ -118,51 +118,58 @@ interface LeadRow {
 
 // ===== FIELD MAPPING =====
 
-// Convert frontend Business to Supabase row (omit id - let Supabase generate UUID)
-const businessToRow = (b: Business): Partial<LeadRow> => ({
-    // Note: omitting 'id' so Supabase generates a UUID
-    // Using business_name for upsert conflict resolution
-    business_name: b.name,
-    address: b.address,
-    category: b.category,
-    rating: b.rating || 0,
-    review_count: b.reviewCount || 0,
-    phone: b.phone || null,
-    email: b.email || null,
-    website: b.website || null,
-    original_url: b.website || null,
-    status: b.status,
-    quality_score: b.qualityScore || 0,
-    digital_score: b.digitalScore || 0,
-    seo_score: b.seoScore || 0,
-    social_score: b.socialScore || 0,
-    estimated_value: b.estimatedValue || 0,
-    project_id: b.projectId || null,
-    founder_name: b.founderName || null,
-    logo_url: b.logoUrl || null,
-    instagram: b.instagram || null,
-    linkedin: b.linkedin || null,
-    contact_email: b.contactEmail || null,
-    is_qualified: b.isQualified ?? false,
-    redesign_image_url: b.redesignImageUrl || null,
-    redesign_below_fold_url: b.redesignBelowFoldUrl || null,
-    original_screenshot: b.originalScreenshot || null,
-    below_fold_screenshot: b.belowFoldScreenshot || null,
-    screenshots: b.screenshots || null,
-    preview_url: b.previewSiteUrl || null,
-    audit_data: b.auditResult || null,
-    pagespeed_mobile: b.pageSpeedMobile || null,
-    pagespeed_desktop: b.pageSpeedDesktop || null,
-    analysis_bullets: b.analysisBullets || null,
-    outreach_messages: b.outreachMessages || null,
-    search_query: b.searchQuery || null,
-    search_location: b.searchLocation || null,
-    source: b.source || null,
-    rank: b.rank || null,
-    whatsapp_verified: b.whatsappVerified ?? null,
-    is_contacted: b.isContacted ?? false,
-    updated_at: new Date().toISOString(),
-});
+const businessToRow = (b: Business): Partial<LeadRow> => {
+    const row: any = {
+        business_name: b.name,
+        address: b.address,
+        category: b.category,
+        rating: b.rating || 0,
+        review_count: b.reviewCount || 0,
+        phone: b.phone || null,
+        email: b.email || null,
+        website: b.website || null,
+        original_url: b.website || null,
+        status: b.status,
+        quality_score: b.qualityScore || 0,
+        digital_score: b.digitalScore || 0,
+        seo_score: b.seoScore || 0,
+        social_score: b.socialScore || 0,
+        estimated_value: b.estimatedValue || 0,
+        project_id: b.projectId || null,
+        founder_name: b.founderName || null,
+        logo_url: b.logoUrl || null,
+        instagram: b.instagram || null,
+        linkedin: b.linkedin || null,
+        contact_email: b.contactEmail || null,
+        is_qualified: b.isQualified ?? false,
+        redesign_image_url: b.redesignImageUrl || null,
+        redesign_below_fold_url: b.redesignBelowFoldUrl || null,
+        original_screenshot: b.originalScreenshot || null,
+        below_fold_screenshot: b.belowFoldScreenshot || null,
+        screenshots: b.screenshots || null,
+        preview_url: b.previewSiteUrl || null,
+        audit_data: b.auditResult || null,
+        pagespeed_mobile: b.pageSpeedMobile || null,
+        pagespeed_desktop: b.pageSpeedDesktop || null,
+        analysis_bullets: b.analysisBullets || null,
+        outreach_messages: b.outreachMessages || null,
+        search_query: b.searchQuery || null,
+        search_location: b.searchLocation || null,
+        source: b.source || null,
+        rank: b.rank || null,
+        whatsapp_verified: b.whatsappVerified ?? null,
+        is_contacted: b.isContacted ?? false,
+        updated_at: new Date().toISOString(),
+    };
+
+    // Pass valid UUIDs back to Supabase to keep frontend/backend IDs in sync
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (b.id && uuidRegex.test(b.id)) {
+        row.id = b.id;
+    }
+
+    return row as Partial<LeadRow>;
+};
 
 const rowToBusiness = (r: LeadRow): Business => ({
     id: r.id,

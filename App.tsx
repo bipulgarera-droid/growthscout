@@ -59,11 +59,23 @@ const App = () => {
     // 2. Recover from Leads Storage (Pipeline)
     const localLeads = loadFromStorage<Business[]>(LEADS_STORAGE_KEY, []);
 
-    // Merge immediately on startup to prevent flash of empty content
-    const combined = [...localSearch];
-    const ids = new Set(localSearch.map(b => b.id));
+    // HEAL IDs: Ensure everything has a valid UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const healLeads = (leads: Business[]) => leads.map(l => {
+      if (!l.id || !uuidRegex.test(l.id)) {
+        return { ...l, id: crypto.randomUUID() };
+      }
+      return l;
+    });
 
-    localLeads.forEach(l => {
+    const healedSearch = healLeads(localSearch);
+    const healedLeads = healLeads(localLeads);
+
+    // Merge immediately on startup to prevent flash of empty content
+    const combined = [...healedSearch];
+    const ids = new Set(healedSearch.map(b => b.id));
+
+    healedLeads.forEach(l => {
       if (!ids.has(l.id)) {
         combined.push(l);
         ids.add(l.id);
@@ -234,12 +246,14 @@ const App = () => {
 
       // Map to Business type
       const mapped: Business[] = discovered.map((d, i) => {
-        // Deterministic ID generation to prevent duplicates
-        const uniqueString = `${d.name}-${d.address || d.website || ''}`;
-        const deterministicId = d.placeId || `biz-${btoa(uniqueString).substring(0, 16)}`;
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        
+        // Use crypto.randomUUID() for everything initially to ensure DB compatibility.
+        // We could use d.placeId if it were a UUID, but it isn't.
+        const leadId = crypto.randomUUID();
 
         return {
-          id: deterministicId,
+          id: leadId,
           name: d.name,
           address: d.address,
           category: d.category || query,

@@ -886,6 +886,103 @@ app.post('/api/leads/:id/upload-logo', async (req, res) => {
     }
 });
 
+// ============ FULFILLMENT: FORM SUBMISSION WEBHOOK ============
+app.post('/api/webhook/form', async (req, res) => {
+    try {
+        const { slug, name, phone, email, message } = req.body;
+        
+        if (!slug || !name || (!phone && !email)) {
+             return res.status(400).json({ error: 'Missing required fields: slug, name, and either phone or email.'});
+        }
+
+        // 1. Fetch the business to get their phone number for notification
+        const { data: presInfo } = await supabase
+            .from('personalized_previews')
+            .select('*')
+            .eq('slug', slug)
+            .single();
+
+        let ownerPhone = null;
+        let businessName = slug;
+
+        if (presInfo) {
+            const { data: leadInfo } = await supabase
+                .from('leads')
+                .select('*')
+                .eq('id', presInfo.original_lead_id)
+                .single();
+            
+            if (leadInfo) {
+                ownerPhone = leadInfo.phone;
+                businessName = leadInfo.business_name;
+            }
+        }
+
+        // 2. Insert into the client_leads table
+        const { error: dbError } = await supabase
+            .from('client_leads')
+            .insert({
+                business_slug: slug,
+                customer_name: name,
+                customer_phone: phone,
+                customer_email: email,
+                message: message || ''
+            });
+            
+        if (dbError) {
+            console.error("Failed to append client lead", dbError);
+        }
+
+        // 3. Notify the business owner via Twilio SMS (if they have a phone on file)
+        const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID;
+        const TWILIO_AUTH = process.env.TWILIO_AUTH_TOKEN;
+        const TWILIO_PHONE = process.env.TWILIO_PHONE_NUMBER;
+
+        if (ownerPhone && TWILIO_SID && TWILIO_AUTH && TWILIO_PHONE) {
+            try {
+                let notificationMsg = `🚨 New Lead from your website (${businessName})! 🚨\nName: ${name}\n`;
+                if (phone) notificationMsg += `Phone: ${phone}\n`;
+                if (email) notificationMsg += `Email: ${email}\n`;
+                if (message) notificationMsg += `Message: ${message}`;
+                
+                const twilioDest = ownerPhone.startsWith('+') ? ownerPhone : `+1${ownerPhone.replace(/\D/g, '')}`;
+                
+                const searchParams = new URLSearchParams();
+                searchParams.append('To', twilioDest);
+                searchParams.append('From', TWILIO_PHONE);
+                searchParams.append('Body', notificationMsg);
+
+                const twilioRes = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Basic ' + Buffer.from(`${TWILIO_SID}:${TWILIO_AUTH}`).toString('base64'),
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: searchParams.toString()
+                });
+
+                if (!twilioRes.ok) {
+                    const twilioErrBody = await twilioRes.text();
+                    console.error("Twilio form webhook SMS failed (HTTP):", twilioErrBody);
+                } else {
+                    console.log(`Successfully sent SMS lead alert to owner for ${slug}`);
+                }
+            } catch (twilioErr) {
+                console.error("Twilio form webhook SMS failed (Network):", twilioErr);
+            }
+        }
+
+        if (!ownerPhone) {
+            console.log(`Lead stored. No phone on file for slug ${slug}, skipped SMS.`);
+        }
+
+        res.status(200).json({ success: true, message: 'Lead captured and notification sent' });
+    } catch (error: any) {
+        console.error('Form Webhook Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // ============ FULFILLMENT: REVIEW GATE ============
 app.get('/r/:slug', async (req, res) => {
     try {

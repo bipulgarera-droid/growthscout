@@ -1687,25 +1687,6 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
                         }}
                       />
                     </div>
-
-                    <div>
-                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Color Palette</label>
-                      <select 
-                        className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500"
-                        value={selectedContact.themeColorPalette || 'default'}
-                        onChange={(e) => {
-                           const updated = {...selectedContact, themeColorPalette: e.target.value};
-                           setSelectedContact(updated);
-                           onUpdateResult(updated.id, updated);
-                        }}
-                      >
-                        <option value="default">Default Theme Colors</option>
-                        <option value="blue">Trustworthy Blue</option>
-                        <option value="green">Eco / Healthy Green</option>
-                        <option value="dark">Sleek Dark Mode</option>
-                        <option value="pink">Beauty / Spa Pink</option>
-                      </select>
-                    </div>
                   </div>
 
                   {!selectedContact.previewSiteUrl ? (

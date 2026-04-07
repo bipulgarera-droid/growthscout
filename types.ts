@@ -45,6 +45,7 @@ export interface Business {
   auditResult?: WebsiteAudit; // The full AI analysis
   
   // Template Customization Fields
+  themeTemplate?: string;
   themeTagline?: string;
   themeHeroPhrases?: string[];
   themeColorPalette?: string;

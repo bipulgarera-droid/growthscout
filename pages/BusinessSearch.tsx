@@ -1579,6 +1579,23 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
                     <h4 className="font-bold text-slate-800 border-b pb-2">Theme Customization Settings</h4>
                     
                     <div>
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Website Template</label>
+                      <select 
+                        className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500"
+                        value={selectedContact.themeTemplate || 'med-spa-template-1'}
+                        onChange={(e) => {
+                           const updated = {...selectedContact, themeTemplate: e.target.value};
+                           setSelectedContact(updated);
+                           onUpdateResult(updated.id, updated);
+                        }}
+                      >
+                        <option value="med-spa-template-1">Med Spa Theme (Default)</option>
+                        <option value="plumber-template-1">Plumbing Theme</option>
+                        <option value="generic-business-1">Generic Local Business</option>
+                      </select>
+                    </div>
+
+                    <div>
                       <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Brand Tagline</label>
                       <input 
                         className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500"

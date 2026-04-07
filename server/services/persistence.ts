@@ -43,6 +43,7 @@ interface Business {
     projectId?: string;
     founderName?: string;
     logoUrl?: string;
+    themeTemplate?: string;
     instagram?: string;
     linkedin?: string;
     contactEmail?: string;

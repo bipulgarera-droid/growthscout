@@ -5,8 +5,12 @@ create table if not exists personalized_previews (
   business_name text not null,
   logo_url text,
   contact_info jsonb,
+  theme_settings jsonb,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
+
+-- Ensure theme_settings exists on existing tables
+alter table if exists personalized_previews add column if not exists theme_settings jsonb;
 
 -- Enable RLS (optional, good practice)
 alter table personalized_previews enable row level security;

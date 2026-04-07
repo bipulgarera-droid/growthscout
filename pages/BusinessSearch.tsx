@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Search, MapPin, Filter, Download, ExternalLink, RefreshCw, Smartphone, Mail, Linkedin, Instagram, Eye, UserPlus, X, User, Save, Check, PlusCircle, Send, Globe } from 'lucide-react';
 import { Business } from '../types';
 import { useNavigate } from 'react-router-dom';
-import { enrichBusiness, bulkAnalyze, bulkGenerateMessages, bulkSendOutreach, analyzeWebsite, generateWebsite, bulkGenerateWebsites, addManualLead, bulkVerifyWhatsApp, AnalysisResult, OutreachMessages } from '../services/backendApi';
+import { enrichBusiness, bulkAnalyze, bulkGenerateMessages, bulkSendOutreach, analyzeWebsite, generateWebsite, bulkGenerateWebsites, addManualLead, bulkVerifyWhatsApp, uploadLogo, AnalysisResult, OutreachMessages } from '../services/backendApi';
 
 interface BusinessSearchProps {
   onAddLead: (b: Business) => void;
@@ -53,6 +53,7 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
   const [selectedContact, setSelectedContact] = useState<Business | null>(null);
   const [activeTab, setActiveTab] = useState<'contact' | 'analysis' | 'outreach' | 'website'>('contact');
   const [isModalActionLoading, setIsModalActionLoading] = useState(false);
+  const [logoUploadUrl, setLogoUploadUrl] = useState('');
 
   // Manual Add State
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
@@ -1480,6 +1481,47 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
                     </div>
                   </div>
 
+                  {/* Logo Configuration */}
+                  <div className="p-4 bg-slate-50 rounded-lg border border-slate-100">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Logo Configuration</label>
+                      <div className="flex gap-2">
+                         <input 
+                           type="text" 
+                           placeholder={selectedContact.logoUrl ? "Update logo URL..." : "Paste remote image URL for logo"} 
+                           className="flex-1 px-3 py-2 border rounded-lg text-sm bg-white"
+                           value={logoUploadUrl}
+                           onChange={(e) => setLogoUploadUrl(e.target.value)}
+                         />
+                         <button 
+                           className="bg-brand-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-brand-700 disabled:opacity-50"
+                           onClick={async () => {
+                             if(!logoUploadUrl) return;
+                             setIsModalActionLoading(true);
+                             try {
+                               await uploadLogo(selectedContact.id, logoUploadUrl);
+                               onUpdateResult(selectedContact.id, { logoUrl: logoUploadUrl });
+                               setSelectedContact(prev => prev ? {...prev, logoUrl: logoUploadUrl} : null);
+                               setLogoUploadUrl('');
+                               alert('Logo updated successfully!');
+                             } catch (err: any) {
+                               alert('Logo upload failed: ' + err.message);
+                             } finally {
+                               setIsModalActionLoading(false);
+                             }
+                           }}
+                           disabled={isModalActionLoading || !logoUploadUrl}
+                         >
+                           {isModalActionLoading ? 'Saving...' : 'Set Logo'}
+                         </button>
+                      </div>
+                      {selectedContact.logoUrl && (
+                        <div className="mt-3 flex items-center gap-3">
+                           <span className="text-xs text-slate-500">Current Logo:</span>
+                           <img src={selectedContact.logoUrl} alt="Logo" className="max-h-8 object-contain rounded bg-white shadow-sm p-1" />
+                        </div>
+                      )}
+                  </div>
+
                   <button
                     onClick={async () => {
                       if (!selectedContact) return;
@@ -1728,7 +1770,72 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
               )}
 
               {activeTab === 'website' && (
-                <div className="space-y-6 flex flex-col items-center justify-center py-8">
+                <div className="space-y-6 flex flex-col items-center justify-center py-8 px-4">
+                  <div className="w-full space-y-4 mb-4">
+                    <h4 className="font-bold text-slate-800 border-b pb-2">Theme Customization Settings</h4>
+                    
+                    <div>
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Brand Tagline</label>
+                      <input 
+                        className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500"
+                        placeholder="e.g., The best plumbing in town"
+                        value={selectedContact.themeTagline || ''}
+                        onChange={(e) => {
+                           const updated = {...selectedContact, themeTagline: e.target.value};
+                           setSelectedContact(updated);
+                           onUpdateResult(updated.id, updated);
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Hero Phrases (Comma Separated)</label>
+                      <input 
+                        className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500"
+                        placeholder="e.g., Fast, Reliable, Affordable"
+                        value={(selectedContact.themeHeroPhrases || []).join(', ')}
+                        onChange={(e) => {
+                           const updated = {...selectedContact, themeHeroPhrases: e.target.value.split(',').map(s => s.trim()).filter(Boolean)};
+                           setSelectedContact(updated);
+                           onUpdateResult(updated.id, updated);
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Services Offered (Comma Separated)</label>
+                      <input 
+                        className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500"
+                        placeholder="e.g., HVAC Repair, AC Installation, Heating"
+                        value={(selectedContact.themeServices || []).join(', ')}
+                        onChange={(e) => {
+                           const updated = {...selectedContact, themeServices: e.target.value.split(',').map(s => s.trim()).filter(Boolean)};
+                           setSelectedContact(updated);
+                           onUpdateResult(updated.id, updated);
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Color Palette</label>
+                      <select 
+                        className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500"
+                        value={selectedContact.themeColorPalette || 'default'}
+                        onChange={(e) => {
+                           const updated = {...selectedContact, themeColorPalette: e.target.value};
+                           setSelectedContact(updated);
+                           onUpdateResult(updated.id, updated);
+                        }}
+                      >
+                        <option value="default">Default Theme Colors</option>
+                        <option value="blue">Trustworthy Blue</option>
+                        <option value="green">Eco / Healthy Green</option>
+                        <option value="dark">Sleek Dark Mode</option>
+                        <option value="pink">Beauty / Spa Pink</option>
+                      </select>
+                    </div>
+                  </div>
+
                   {!selectedContact.previewSiteUrl ? (
                     <>
                       <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 mb-4">

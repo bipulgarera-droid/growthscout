@@ -282,6 +282,20 @@ export const bulkGenerateWebsites = async (leads: any[]): Promise<Record<string,
     return data.results;
 };
 
+// Upload custom logo
+export const uploadLogo = async (leadId: string, logoUrl: string): Promise<any> => {
+    const response = await fetch(`${API_BASE}/leads/${leadId}/upload-logo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logoUrl })
+    });
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Logo upload failed');
+    }
+    return response.json();
+};
+
 // Analyze single website
 export const analyzeWebsite = async (url: string, businessName: string): Promise<AnalysisResult> => {
     const response = await fetch(`${API_BASE}/analyze`, {

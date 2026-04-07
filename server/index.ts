@@ -808,6 +808,31 @@ app.post('/api/push-to-outreach', async (req, res) => {
     }
 });
 
+// ============ LOGO UPLOAD ============
+app.post('/api/leads/:id/upload-logo', async (req, res) => {
+    try {
+        const leadId = req.params.id;
+        const { logoUrl } = req.body;
+
+        if (!logoUrl) {
+            return res.status(400).json({ error: 'logoUrl is required' });
+        }
+
+        // Update local Supabase leads table
+        const { error: dbError } = await supabase
+            .from('leads')
+            .update({ logo_url: logoUrl })
+            .eq('id', leadId);
+
+        if (dbError) throw dbError;
+
+        res.json({ success: true, logoUrl, message: 'Logo URL updated successfully. Re-generate website to apply.' });
+    } catch (error: any) {
+        console.error('Logo Upload Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // ============ SPA CATCH-ALL (must be LAST route) ============
 // In production, serve index.html for any non-API route (client-side routing)
 const distIndexPath = path.resolve(__dirname, '../dist/index.html');

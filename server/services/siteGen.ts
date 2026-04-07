@@ -27,6 +27,10 @@ export interface SiteGenInput {
     logoUrl?: string;
     website?: string; // or website_url
     templateType?: string;
+    themeTagline?: string;
+    themeHeroPhrases?: string[];
+    themeColorPalette?: string;
+    themeServices?: string[];
 }
 
 export const generateWebsite = async (business: SiteGenInput): Promise<{ success: boolean; previewUrl: string }> => {
@@ -42,21 +46,24 @@ export const generateWebsite = async (business: SiteGenInput): Promise<{ success
         address: business.address
     };
 
-    // Force extraction every time to guarantee Logo.dev is used over old cached data
+    // If the user already provided a logoUrl (e.g. via manual upload), use it.
     let finalLogoUrl = business.logoUrl;
     const websiteUrl = business.website;
 
     if (websiteUrl) {
         console.log(`[SiteGen] Extraction requested for ${businessName} from ${websiteUrl}...`);
         try {
-            // 1. Try robust Logo.dev extraction for logo (Always overwrite old logo)
-            const extracted = await extractLogo(websiteUrl);
-            if (extracted) {
-                finalLogoUrl = extracted;
-                console.log(`[SiteGen] 🎯 Freshly extracted logo: ${finalLogoUrl}`);
+            // 1. Only extract logo if we don't already have one
+            if (!finalLogoUrl) {
+                const extracted = await extractLogo(websiteUrl);
+                if (extracted) {
+                    finalLogoUrl = extracted;
+                    console.log(`[SiteGen] 🎯 Freshly extracted logo: ${finalLogoUrl}`);
+                } else {
+                    console.log(`[SiteGen] Extraction returned nothing. Using text fallback.`);
+                }
             } else {
-                console.log(`[SiteGen] Extraction returned nothing. Using text fallback.`);
-                finalLogoUrl = undefined;
+                console.log(`[SiteGen] Using existing provided logoUrl: ${finalLogoUrl}`);
             }
 
             // 2. Extract contact info if missing
@@ -82,7 +89,13 @@ export const generateWebsite = async (business: SiteGenInput): Promise<{ success
             slug,
             business_name: businessName,
             logo_url: finalLogoUrl || null,
-            contact_info: contactInfo
+            contact_info: contactInfo,
+            theme_settings: {
+                tagline: business.themeTagline,
+                heroPhrases: business.themeHeroPhrases,
+                colorPalette: business.themeColorPalette,
+                services: business.themeServices
+            }
         }, { onConflict: 'slug' });
 
     if (upsertError) {

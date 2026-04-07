@@ -43,6 +43,12 @@ export interface Business {
   screenshots?: string[]; // Array of 3 key screenshots
   previewSiteUrl?: string; // Generated preview website URL
   auditResult?: WebsiteAudit; // The full AI analysis
+  
+  // Template Customization Fields
+  themeTagline?: string;
+  themeHeroPhrases?: string[];
+  themeColorPalette?: string;
+  themeServices?: string[];
 
   // New Analysis Fields
   pageSpeedMobile?: number;

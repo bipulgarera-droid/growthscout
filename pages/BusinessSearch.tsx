@@ -1487,35 +1487,70 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
                   {/* Logo Configuration */}
                   <div className="p-4 bg-slate-50 rounded-lg border border-slate-100">
                       <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Logo Configuration</label>
-                      <div className="flex gap-2">
-                         <input 
-                           type="text" 
-                           placeholder={selectedContact.logoUrl ? "Update logo URL..." : "Paste remote image URL for logo"} 
-                           className="flex-1 px-3 py-2 border rounded-lg text-sm bg-white"
-                           value={logoUploadUrl}
-                           onChange={(e) => setLogoUploadUrl(e.target.value)}
-                         />
-                         <button 
-                           className="bg-brand-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-brand-700 disabled:opacity-50"
-                           onClick={async () => {
-                             if(!logoUploadUrl) return;
-                             setIsModalActionLoading(true);
-                             try {
-                               await uploadLogo(selectedContact.id, logoUploadUrl);
-                               onUpdateResult(selectedContact.id, { logoUrl: logoUploadUrl });
-                               setSelectedContact(prev => prev ? {...prev, logoUrl: logoUploadUrl} : null);
-                               setLogoUploadUrl('');
-                               alert('Logo updated successfully!');
-                             } catch (err: any) {
-                               alert('Logo upload failed: ' + err.message);
-                             } finally {
-                               setIsModalActionLoading(false);
-                             }
-                           }}
-                           disabled={isModalActionLoading || !logoUploadUrl}
-                         >
-                           {isModalActionLoading ? 'Saving...' : 'Set Logo'}
-                         </button>
+                      <div className="flex flex-col gap-3">
+                         <div className="flex gap-2 items-center">
+                           <input 
+                             type="file" 
+                             accept="image/*"
+                             title="Upload an image from your computer"
+                             className="text-sm w-full text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100 bg-white border border-dashed border-slate-300 p-2 rounded-xl cursor-pointer"
+                             onChange={async (e) => {
+                               const file = e.target.files?.[0];
+                               if (!file) return;
+                               const reader = new FileReader();
+                               reader.onloadend = async () => {
+                                 const base64data = reader.result as string;
+                                 setIsModalActionLoading(true);
+                                 try {
+                                   const res = await uploadLogo(selectedContact.id, { logoData: base64data });
+                                   onUpdateResult(selectedContact.id, { logoUrl: res.logoUrl });
+                                   setSelectedContact(prev => prev ? {...prev, logoUrl: res.logoUrl} : null);
+                                 } catch (err: any) {
+                                   alert('Logo upload failed: ' + err.message);
+                                 } finally {
+                                   setIsModalActionLoading(false);
+                                 }
+                               };
+                               reader.readAsDataURL(file);
+                             }}
+                           />
+                         </div>
+                         
+                         <div className="flex items-center gap-2">
+                           <div className="h-px bg-slate-200 flex-1"></div>
+                           <span className="text-xs font-bold text-slate-400 uppercase">Or link</span>
+                           <div className="h-px bg-slate-200 flex-1"></div>
+                         </div>
+
+                         <div className="flex gap-2">
+                           <input 
+                             type="text" 
+                             placeholder={selectedContact.logoUrl ? "Update logo URL..." : "Paste remote image URL for logo"} 
+                             className="flex-1 px-3 py-2 border rounded-lg text-sm bg-white"
+                             value={logoUploadUrl}
+                             onChange={(e) => setLogoUploadUrl(e.target.value)}
+                           />
+                           <button 
+                             className="bg-brand-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-brand-700 disabled:opacity-50"
+                             onClick={async () => {
+                               if(!logoUploadUrl) return;
+                               setIsModalActionLoading(true);
+                               try {
+                                 const res = await uploadLogo(selectedContact.id, { logoUrl: logoUploadUrl });
+                                 onUpdateResult(selectedContact.id, { logoUrl: res.logoUrl });
+                                 setSelectedContact(prev => prev ? {...prev, logoUrl: res.logoUrl} : null);
+                                 setLogoUploadUrl('');
+                               } catch (err: any) {
+                                 alert('Logo upload failed: ' + err.message);
+                               } finally {
+                                 setIsModalActionLoading(false);
+                               }
+                             }}
+                             disabled={isModalActionLoading || !logoUploadUrl}
+                           >
+                             {isModalActionLoading ? 'Saving...' : 'Set Logo'}
+                           </button>
+                         </div>
                       </div>
                       {selectedContact.logoUrl && (
                         <div className="mt-3 flex items-center gap-3">

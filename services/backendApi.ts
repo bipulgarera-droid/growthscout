@@ -283,11 +283,11 @@ export const bulkGenerateWebsites = async (leads: any[]): Promise<Record<string,
 };
 
 // Upload custom logo
-export const uploadLogo = async (leadId: string, logoUrl: string): Promise<any> => {
+export const uploadLogo = async (leadId: string, payload: { logoUrl?: string; logoData?: string }): Promise<any> => {
     const response = await fetch(`${API_BASE}/leads/${leadId}/upload-logo`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ logoUrl })
+        body: JSON.stringify(payload)
     });
     if (!response.ok) {
         const err = await response.json();

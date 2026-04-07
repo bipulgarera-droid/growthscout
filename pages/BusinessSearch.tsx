@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, MapPin, Filter, Download, ExternalLink, RefreshCw, Smartphone, Mail, Linkedin, Instagram, Eye, UserPlus, X, User, Save, Check, PlusCircle, Send, Globe } from 'lucide-react';
 import { Business } from '../types';
 import { useNavigate } from 'react-router-dom';
@@ -54,6 +54,17 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
   const [activeTab, setActiveTab] = useState<'contact' | 'analysis' | 'outreach' | 'website'>('contact');
   const [isModalActionLoading, setIsModalActionLoading] = useState(false);
   const [logoUploadUrl, setLogoUploadUrl] = useState('');
+
+  // Local UI State for Array Inputs
+  const [localHeroPhrases, setLocalHeroPhrases] = useState('');
+  const [localServices, setLocalServices] = useState('');
+
+  useEffect(() => {
+    if (selectedContact) {
+      setLocalHeroPhrases((selectedContact.themeHeroPhrases || []).join(', '));
+      setLocalServices((selectedContact.themeServices || []).join(', '));
+    }
+  }, [selectedContact?.id]);
 
   // Manual Add State
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
@@ -1614,10 +1625,13 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
                       <input 
                         className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500"
                         placeholder="e.g., Fast, Reliable, Affordable"
-                        value={(selectedContact.themeHeroPhrases || []).join(', ')}
+                        value={localHeroPhrases}
                         onChange={(e) => {
-                           const updated = {...selectedContact, themeHeroPhrases: e.target.value.split(',').map(s => s.trim()).filter(Boolean)};
+                           const val = e.target.value;
+                           setLocalHeroPhrases(val);
+                           const updated = {...selectedContact, themeHeroPhrases: val.split(',').map(s => s.trim()).filter(Boolean)};
                            setSelectedContact(updated);
+                           // Debounce or just update directly - it's fine 
                            onUpdateResult(updated.id, updated);
                         }}
                       />
@@ -1628,9 +1642,11 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
                       <input 
                         className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500"
                         placeholder="e.g., HVAC Repair, AC Installation, Heating"
-                        value={(selectedContact.themeServices || []).join(', ')}
+                        value={localServices}
                         onChange={(e) => {
-                           const updated = {...selectedContact, themeServices: e.target.value.split(',').map(s => s.trim()).filter(Boolean)};
+                           const val = e.target.value;
+                           setLocalServices(val);
+                           const updated = {...selectedContact, themeServices: val.split(',').map(s => s.trim()).filter(Boolean)};
                            setSelectedContact(updated);
                            onUpdateResult(updated.id, updated);
                         }}

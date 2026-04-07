@@ -121,6 +121,19 @@ BEGIN
         ALTER TABLE leads ADD COLUMN search_location TEXT;
     END IF;
     
+    -- Fulfillment engines configuration
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'leads' AND column_name = 'rag_knowledge_base') THEN
+        ALTER TABLE leads ADD COLUMN rag_knowledge_base TEXT;
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'leads' AND column_name = 'review_url') THEN
+        ALTER TABLE leads ADD COLUMN review_url TEXT;
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'leads' AND column_name = 'missed_call_template') THEN
+        ALTER TABLE leads ADD COLUMN missed_call_template TEXT;
+    END IF;
+
     -- Updated at
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'leads' AND column_name = 'updated_at') THEN
         ALTER TABLE leads ADD COLUMN updated_at TIMESTAMPTZ DEFAULT now();

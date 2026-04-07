@@ -57,7 +57,7 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
 
   // Manual Add State
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
-  const [manualInput, setManualInput] = useState({ url: '', name: '', city: '' });
+  const [manualInput, setManualInput] = useState({ url: '', name: '', city: '', founderName: '', email: '', phone: '' });
 
   // Push to Outreach State
   const [isOutreachModalOpen, setIsOutreachModalOpen] = useState(false);
@@ -371,7 +371,10 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
         name: name,
         address: manualInput.city || 'Unknown Location',
         website: manualInput.url,
-        phone: '',
+        phone: manualInput.phone || '',
+        founderName: manualInput.founderName || undefined,
+        contactEmail: manualInput.email || undefined,
+        email: manualInput.email || undefined,
         category: 'Manual Lead',
         status: 'new',
         rating: 0,
@@ -390,7 +393,7 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
 
       onInjectResult(newLead);
       setIsManualModalOpen(false);
-      setManualInput({ url: '', name: '', city: '' });
+      setManualInput({ url: '', name: '', city: '', founderName: '', email: '', phone: '' });
 
     } catch (e: any) {
       alert('Invalid URL');
@@ -793,7 +796,7 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
               onClick={() => setIsManualModalOpen(true)}
               className="text-brand-600 bg-brand-50 hover:bg-brand-100 border border-brand-200 px-4 py-2.5 rounded-lg font-medium transition-colors flex items-center gap-2"
             >
-              <PlusCircle size={20} /> Add by URL
+              <PlusCircle size={20} /> Add Manual Contact
             </button>
             <button
               onClick={handleSearchClick}
@@ -1371,18 +1374,7 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
               >
                 Contact Info
               </button>
-              <button
-                onClick={() => setActiveTab('analysis')}
-                className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'analysis' ? 'border-brand-600 text-brand-600 bg-brand-50/50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-              >
-                Analysis & Scores
-              </button>
-              <button
-                onClick={() => setActiveTab('outreach')}
-                className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'outreach' ? 'border-brand-600 text-brand-600 bg-brand-50/50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-              >
-                Outreach
-              </button>
+
               <button
                 onClick={() => setActiveTab('website')}
                 className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'website' ? 'border-brand-600 text-brand-600 bg-brand-50/50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
@@ -1580,194 +1572,6 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
                 </div>
               )}
 
-              {activeTab === 'analysis' && (
-                <div className="space-y-6">
-                  <div className="flex gap-4">
-                    <div className="w-1/3">
-                      {/* Full Page Screenshot (Scrollable) */}
-                      <div className="w-full bg-slate-100 rounded-lg border border-slate-300 overflow-hidden relative group">
-                        <div className="h-[400px] overflow-y-auto custom-scrollbar relative">
-                          {selectedContact.originalScreenshot ? (
-                            <img
-                              src={selectedContact.originalScreenshot.startsWith('data:')
-                                ? selectedContact.originalScreenshot
-                                : `data:image/png;base64,${selectedContact.originalScreenshot}`
-                              }
-                              className="w-full h-auto object-cover block"
-                            />
-                          ) : (
-                            <div className="h-full flex items-center justify-center text-slate-400 text-xs">No Screenshot</div>
-                          )}
-                        </div>
-
-                        {/* Overlay Hint */}
-                        <div className="absolute bottom-2 right-4 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full pointer-events-none opacity-50 group-hover:opacity-100 transition-opacity">
-                          Scroll to view full page
-                        </div>
-                      </div>
-                      <div className="text-center mt-2">
-                        <a href={selectedContact.website} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline">
-                          View Live Site
-                        </a>
-                      </div>
-                    </div>
-                    <div className="w-2/3 space-y-4">
-                      {/* Scores Grid */}
-                      <div className="grid grid-cols-3 gap-2">
-                        <div className="text-center p-2 bg-slate-50 rounded border">
-                          <div className="text-xs text-slate-500 mb-1">Mobile Speed</div>
-                          <div className={`text-2xl font-bold ${!selectedContact.pageSpeedMobile ? 'text-slate-400' :
-                            selectedContact.pageSpeedMobile < 50 ? 'text-red-500' :
-                              selectedContact.pageSpeedMobile < 90 ? 'text-amber-500' : 'text-green-500'
-                            }`}>
-                            {selectedContact.pageSpeedMobile || '-'}
-                          </div>
-                        </div>
-                        <div className="text-center p-2 bg-slate-50 rounded border">
-                          <div className="text-xs text-slate-500 mb-1">Desktop Speed</div>
-                          <div className={`text-2xl font-bold ${!selectedContact.pageSpeedDesktop ? 'text-slate-400' :
-                            selectedContact.pageSpeedDesktop < 50 ? 'text-red-500' :
-                              selectedContact.pageSpeedDesktop < 90 ? 'text-amber-500' : 'text-green-500'
-                            }`}>
-                            {selectedContact.pageSpeedDesktop || '-'}
-                          </div>
-                        </div>
-                        <div className="text-center p-2 bg-slate-50 rounded border">
-                          <div className="text-xs text-slate-500 mb-1">Qualify Score</div>
-                          <div className={`text-2xl font-bold ${!selectedContact.digitalScore ? 'text-slate-400' :
-                            selectedContact.digitalScore < 60 ? 'text-slate-400' : 'text-green-600'
-                            }`}>
-                            {selectedContact.digitalScore || '-'}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Sales Analysis Bullets */}
-                      <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
-                        <h4 className="text-sm font-semibold text-blue-900 mb-2">Pitch Analysis</h4>
-                        {selectedContact.analysisBullets && selectedContact.analysisBullets.length > 0 ? (
-                          <ul className="space-y-2">
-                            {selectedContact.analysisBullets.map((bullet, idx) => (
-                              <li key={idx} className="text-sm text-blue-800 flex items-start gap-2">
-                                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
-                                <span>{bullet.replace(/^•\s*/, '')}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className="text-sm text-blue-600 italic">Run analysis to see template comparison...</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'outreach' && (
-                <div className="space-y-4">
-                  {!selectedContact.outreachMessages ? (
-                    <div className="text-center py-8">
-                      <p className="text-slate-500 mb-4">No messages generated yet.</p>
-                      {!selectedContact.previewSiteUrl && (
-                        <div className="bg-amber-50 text-amber-800 text-xs px-3 py-2 rounded mb-4 inline-block border border-amber-200">
-                          ⚠️ Create a website first to include a customized demo link.
-                        </div>
-                      )}
-                      <br />
-                      <button
-                        onClick={async () => {
-                          if (!selectedContact) return;
-                          setIsModalActionLoading(true);
-                          try {
-                            const leads = [{
-                              businessName: selectedContact.name,
-                              contactName: selectedContact.founderName,
-                              websiteUrl: selectedContact.website || '',
-                              previewUrl: selectedContact.previewSiteUrl || `https://medspa-website.vercel.app/preview/${selectedContact.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}`,
-                              speedScore: selectedContact.seoScore,
-                            }];
-                            const results = await bulkGenerateMessages(leads);
-                            const msgs = results[selectedContact.name];
-
-                            const updated = { ...selectedContact, outreachMessages: msgs };
-                            setSelectedContact(updated);
-                            onUpdateResult(updated.id, { outreachMessages: msgs } as any);
-                          } catch (e: any) { alert('Generation failed:' + e.message); }
-                          finally { setIsModalActionLoading(false); }
-                        }}
-                        disabled={isModalActionLoading}
-                        className="bg-amber-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-amber-700"
-                      >
-                        {isModalActionLoading ? 'Generating...' : 'Generate Messages'}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="flex justify-end">
-                        <button
-                          onClick={async () => {
-                            if (!selectedContact) return;
-                            setIsModalActionLoading(true);
-                            try {
-                              const leads = [{
-                                businessName: selectedContact.name,
-                                contactName: selectedContact.founderName,
-                                websiteUrl: selectedContact.website || '',
-                                previewUrl: selectedContact.previewSiteUrl || `https://medspa-website.vercel.app/preview/${selectedContact.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}`,
-                                speedScore: selectedContact.seoScore,
-                              }];
-                              const results = await bulkGenerateMessages(leads);
-                              const msgs = results[selectedContact.name];
-
-                              const updated = { ...selectedContact, outreachMessages: msgs };
-                              setSelectedContact(updated);
-                              onUpdateResult(updated.id, { outreachMessages: msgs } as any);
-                            } catch (e: any) { alert('Regeneration failed:' + e.message); }
-                            finally { setIsModalActionLoading(false); }
-                          }}
-                          disabled={isModalActionLoading}
-                          className="flex items-center gap-2 text-amber-600 hover:text-amber-700 text-sm font-medium"
-                        >
-                          <RefreshCw size={14} className={isModalActionLoading ? "animate-spin" : ""} /> Regenerate Messages
-                        </button>
-                      </div>
-
-                      <div className="flex justify-end mt-2 mb-2">
-                        <label className="flex items-center gap-2 cursor-pointer bg-slate-100 px-3 py-2 rounded-md border border-slate-200 hover:bg-slate-200 transition-colors">
-                          <input
-                            type="checkbox"
-                            checked={!!selectedContact.isContacted}
-                            onChange={(e) => {
-                              const updated = { ...selectedContact, isContacted: e.target.checked };
-                              setSelectedContact(updated);
-                              onUpdateResult(updated.id, { isContacted: e.target.checked });
-                            }}
-                            className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 h-4 w-4"
-                          />
-                          <span className="text-sm font-medium text-slate-700">Mark as Contacted</span>
-                        </label>
-                      </div>
-
-                      <div className="p-3 bg-slate-50 rounded border">
-                        <div className="text-xs font-bold text-slate-500 mb-1">EMAIL</div>
-                        <p className="text-sm text-slate-700 whitespace-pre-wrap">{selectedContact.outreachMessages.email}</p>
-                      </div>
-                      <div className="p-3 bg-slate-50 rounded border">
-                        <div className="text-xs font-bold text-slate-500 mb-1">LINKEDIN</div>
-                        <p className="text-sm text-slate-700 whitespace-pre-wrap">{selectedContact.outreachMessages.linkedin}</p>
-                      </div>
-                      <div className="p-3 bg-slate-50 rounded border">
-                        <div className="text-xs font-bold text-slate-500 mb-1">INSTAGRAM</div>
-                        <p className="text-sm text-slate-700 whitespace-pre-wrap">{selectedContact.outreachMessages.instagram}</p>
-                      </div>
-                      <div className="p-3 bg-slate-50 rounded border">
-                        <div className="text-xs font-bold text-green-600 mb-1">WHATSAPP</div>
-                        <p className="text-sm text-slate-700 whitespace-pre-wrap">{selectedContact.outreachMessages.whatsapp}</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
 
               {activeTab === 'website' && (
                 <div className="space-y-6 flex flex-col items-center justify-center py-8 px-4">
@@ -1962,6 +1766,43 @@ const BusinessSearch: React.FC<BusinessSearchProps> = ({
                   placeholder="e.g. Miami, FL"
                   className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-brand-500 outline-none"
                 />
+              </div>
+              <div className="pt-2 border-t border-slate-100">
+                <h4 className="text-sm font-bold text-slate-800 mb-3">Contact Details</h4>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Founder / Contact Name</label>
+                    <input
+                      type="text"
+                      value={manualInput.founderName}
+                      onChange={e => setManualInput({ ...manualInput, founderName: e.target.value })}
+                      placeholder="e.g. Jane Doe"
+                      className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-brand-500 outline-none"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                      <input
+                        type="email"
+                        value={manualInput.email}
+                        onChange={e => setManualInput({ ...manualInput, email: e.target.value })}
+                        placeholder="hello@example.com"
+                        className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-brand-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Phone</label>
+                      <input
+                        type="text"
+                        value={manualInput.phone}
+                        onChange={e => setManualInput({ ...manualInput, phone: e.target.value })}
+                        placeholder="(555) 123-4567"
+                        className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-brand-500 outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 

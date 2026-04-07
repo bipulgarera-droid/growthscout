@@ -10,6 +10,9 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') }); // Go up two lev
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
+import { createClient } from '@supabase/supabase-js';
+export const supabase = (SUPABASE_URL && SUPABASE_KEY) ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
 // ===== TYPE DEFINITIONS =====
 
 interface PreviewData {
@@ -64,6 +67,9 @@ interface Business {
     whatsappVerified?: boolean;
     isContacted?: boolean;
     source?: string;
+    ragKnowledgeBase?: string;
+    reviewUrl?: string;
+    missedCallTemplate?: string;
     rank?: number;
 }
 
@@ -112,6 +118,9 @@ interface LeadRow {
     created_at?: string;
     updated_at?: string;
     slug?: string | null;
+    rag_knowledge_base?: string | null;
+    review_url?: string | null;
+    missed_call_template?: string | null;
     whatsapp_verified?: boolean | null;
     is_contacted?: boolean | null;
 }
@@ -157,6 +166,9 @@ const businessToRow = (b: Business): Partial<LeadRow> => {
         search_location: b.searchLocation || null,
         source: b.source || null,
         rank: b.rank || null,
+        rag_knowledge_base: b.ragKnowledgeBase || null,
+        review_url: b.reviewUrl || null,
+        missed_call_template: b.missedCallTemplate || null,
         whatsapp_verified: b.whatsappVerified ?? null,
         is_contacted: b.isContacted ?? false,
         updated_at: new Date().toISOString(),
@@ -214,6 +226,9 @@ const rowToBusiness = (r: LeadRow): Business => ({
     searchLocation: r.search_location || undefined,
     source: (r.source as any) || undefined,
     rank: r.rank || undefined,
+    ragKnowledgeBase: r.rag_knowledge_base || undefined,
+    reviewUrl: r.review_url || undefined,
+    missedCallTemplate: r.missed_call_template || undefined,
     whatsappVerified: r.whatsapp_verified ?? undefined,
     isContacted: r.is_contacted ?? false,
 });
@@ -343,6 +358,9 @@ export const updateBusinessField = async (id: string, updates: Partial<Business>
     if (updates.founderName !== undefined) rowUpdates.founder_name = updates.founderName;
     if (updates.whatsappVerified !== undefined) rowUpdates.whatsapp_verified = updates.whatsappVerified;
     if (updates.isContacted !== undefined) rowUpdates.is_contacted = updates.isContacted;
+    if (updates.ragKnowledgeBase !== undefined) rowUpdates.rag_knowledge_base = updates.ragKnowledgeBase;
+    if (updates.reviewUrl !== undefined) rowUpdates.review_url = updates.reviewUrl;
+    if (updates.missedCallTemplate !== undefined) rowUpdates.missed_call_template = updates.missedCallTemplate;
 
     rowUpdates.updated_at = new Date().toISOString();
 

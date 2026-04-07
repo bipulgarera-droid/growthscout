@@ -50,6 +50,11 @@ export interface Business {
   themeColorPalette?: string;
   themeServices?: string[];
 
+  // Fulfillment Configuration
+  ragKnowledgeBase?: string;
+  reviewUrl?: string;
+  missedCallTemplate?: string;
+
   // New Analysis Fields
   pageSpeedMobile?: number;
   pageSpeedDesktop?: number;

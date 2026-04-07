@@ -75,6 +75,25 @@ app.post('/api/screenshot', async (req, res) => {
     }
 });
 
+// ============ MASTER CHATBOT ENDPOINT ============
+import { executeChatbot } from './services/chatbot.js';
+
+app.post('/api/chat', async (req, res) => {
+    try {
+        const { slug, message, history } = req.body;
+        if (!slug || !message) {
+            res.status(400).json({ error: 'Slug and message are required.' });
+            return;
+        }
+
+        const reply = await executeChatbot(slug, message, history || []);
+        res.json({ reply });
+    } catch (error: any) {
+        console.error('Chatbot API Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // ============ SLIDES SERVICE (OAuth2) ============
 import { createSlides, getAuthUrl, handleOAuthCallback, isAuthorized } from './services/slides.js';
 

@@ -74,10 +74,9 @@ const ClientDashboard = ({ leads, onUpdateClient }: Props) => {
                 <textarea 
                   className="w-full h-32 p-3 border rounded-lg text-sm mb-3 focus:ring-2 focus:ring-blue-500 outline-none"
                   placeholder="Paste business facts here... e.g. We close at 9pm. Price for AC repair is $99 minimum."
+                  value={selectedClient.ragKnowledgeBase || ''}
+                  onChange={(e) => onUpdateClient(selectedClient.id, { ragKnowledgeBase: e.target.value })}
                 />
-                <button className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-lg font-medium text-sm transition-colors">
-                  Save Knowledge Base
-                </button>
               </div>
 
               {/* Review Gate Configuration */}
@@ -93,10 +92,9 @@ const ClientDashboard = ({ leads, onUpdateClient }: Props) => {
                   type="text"
                   className="w-full p-3 border rounded-lg text-sm mb-3 focus:ring-2 focus:ring-amber-500 outline-none"
                   placeholder="https://g.page/r/example..."
+                  value={selectedClient.reviewUrl || ''}
+                  onChange={(e) => onUpdateClient(selectedClient.id, { reviewUrl: e.target.value })}
                 />
-                <button className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-lg font-medium text-sm transition-colors">
-                  Save Review Link
-                </button>
               </div>
 
               {/* Missed Call Webhook */}
@@ -111,10 +109,9 @@ const ClientDashboard = ({ leads, onUpdateClient }: Props) => {
                 <textarea 
                   className="w-full h-20 p-3 border rounded-lg text-sm mb-3 focus:ring-2 focus:ring-purple-500 outline-none"
                   placeholder="Hey, we just missed your call. How can we help?"
+                  value={selectedClient.missedCallTemplate || ''}
+                  onChange={(e) => onUpdateClient(selectedClient.id, { missedCallTemplate: e.target.value })}
                 />
-                <button className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-lg font-medium text-sm transition-colors">
-                  Save Text Template
-                </button>
               </div>
 
               {/* General Config Sync */}

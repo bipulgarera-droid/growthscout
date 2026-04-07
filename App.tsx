@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import BusinessSearch from './pages/BusinessSearch';
+import ClientDashboard from './pages/ClientDashboard';
 import Topbar from './components/Topbar';
 import { useProject } from './context/ProjectContext';
 import { Business } from './types';
@@ -462,6 +463,12 @@ const App = () => {
                   onDeduplicate={handleDeduplicate}
                   onSyncToDb={syncToSupabase}
                   isSyncing={isSyncing}
+                />
+              } />
+              <Route path="/clients" element={
+                <ClientDashboard
+                   leads={searchResults}
+                   onUpdateClient={updateSearchResult}
                 />
               } />
               <Route path="*" element={<Navigate to="/" replace />} />

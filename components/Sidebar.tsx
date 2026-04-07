@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Database } from 'lucide-react';
+import { Search, Database, Users } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 const Sidebar = () => {
@@ -33,6 +33,7 @@ const Sidebar = () => {
           Navigation
         </div>
         <NavItem path="/" icon={Search} label="Prospecting Hub" />
+        <NavItem path="/clients" icon={Users} label="Clients Inbox" />
       </nav>
     </div>
   );

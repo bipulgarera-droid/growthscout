@@ -831,21 +831,55 @@ app.post('/api/push-to-outreach', async (req, res) => {
 app.post('/api/leads/:id/upload-logo', async (req, res) => {
     try {
         const leadId = req.params.id;
-        const { logoUrl } = req.body;
+        const { logoUrl, logoData } = req.body;
 
-        if (!logoUrl) {
-            return res.status(400).json({ error: 'logoUrl is required' });
+        let finalUrl = logoUrl;
+
+        // If local file data is provided as base64, buffer it and pipe to Supabase storage
+        if (logoData && logoData.startsWith('data:image')) {
+            const matches = logoData.match(/^data:image\/([A-Za-z-+\/]+);base64,(.+)$/);
+            if (!matches || matches.length !== 3) {
+                return res.status(400).json({ error: 'Invalid Base64 image format' });
+            }
+            
+            const [ , ext, base64String ] = matches;
+            const buffer = Buffer.from(base64String, 'base64');
+            const filename = `logo-${leadId}-${Date.now()}.${ext}`;
+
+            // Ensure bucket exists (best-effort, usually created in Dashboard)
+            await supabase.storage.createBucket('logos', { public: true }).catch(() => {});
+
+            // Upload directly to Supabase Storage
+            const { data: uploadData, error: uploadError } = await supabase.storage
+                .from('logos')
+                .upload(filename, buffer, { 
+                    contentType: `image/${ext}`,
+                    upsert: true
+                });
+
+            if (uploadError) {
+                console.error("Storage upload error:", uploadError);
+                throw new Error("Failed to upload image to Supabase storage.");
+            }
+
+            // Retrieve the public URL
+            const { data: publicUrlData } = supabase.storage.from('logos').getPublicUrl(filename);
+            finalUrl = publicUrlData.publicUrl;
+        }
+
+        if (!finalUrl) {
+            return res.status(400).json({ error: 'Either logoUrl or logoData is required' });
         }
 
         // Update local Supabase leads table
         const { error: dbError } = await supabase
             .from('leads')
-            .update({ logo_url: logoUrl })
+            .update({ logo_url: finalUrl })
             .eq('id', leadId);
 
         if (dbError) throw dbError;
 
-        res.json({ success: true, logoUrl, message: 'Logo URL updated successfully. Re-generate website to apply.' });
+        res.json({ success: true, logoUrl: finalUrl, message: 'Logo URL updated successfully. Re-generate website to apply.' });
     } catch (error: any) {
         console.error('Logo Upload Error:', error);
         res.status(500).json({ error: error.message });
@@ -968,19 +1002,19 @@ app.post('/api/webhooks/twilio/voice/:slug', async (req, res) => {
             return res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response><Reject/></Response>');
         }
 
-        const missedCallMsg = business.missed_call_template || \`Hi, this is \${business.business_name}. We missed your call! How can we help you today?\`;
+        const missedCallMsg = business.missed_call_template || `Hi, this is ${business.business_name}. We missed your call! How can we help you today?`;
 
         // We use pure XML string interpolation for TwiML without requiring the Twilio SDK module
         // 1. Dial the official business number (forwarding)
         // 2. If the call isn't picked up, Twilio drops to the next XML node. We send an SMS.
-        const twiml = \`<?xml version="1.0" encoding="UTF-8"?>
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <!-- Try to forward to the owner's real phone -->
-    <Dial timeout="15">\${business.phone}</Dial>
+    <Dial timeout="15">${business.phone}</Dial>
     <!-- If not answered, send the missed call text back -->
-    <Sms from="\${req.body.To}" to="\${callerPhone}">\${missedCallMsg}</Sms>
+    <Sms from="${req.body.To}" to="${callerPhone}">${missedCallMsg}</Sms>
     <Say>We are currently unavailable. We have just sent you a text message. Please reply to the text!</Say>
-</Response>\`;
+</Response>`;
 
         res.type('text/xml').send(twiml);
     } catch (error: any) {

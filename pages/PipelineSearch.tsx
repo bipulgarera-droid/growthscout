@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Search, Loader2, Play, Building2, MapPin, Database, Filter, ExternalLink, Activity, Mail, Check, RefreshCw, Smartphone, X, User, Globe, ChevronDown } from 'lucide-react';
 import { Business } from '../types';
-import { generateWebsite, uploadLogo, enrichBusiness } from '../services/backendApi';
+import { generateWebsite, uploadLogo, enrichBusiness, bulkEnrich, bulkAnalyze } from '../services/backendApi';
 
 export default function PipelineSearch({ initialResults = [], projectId, onUpdateResult }: { initialResults?: any[], projectId?: string, onUpdateResult?: (id: string, data: Partial<Business>) => void }) {
   const [service, setService] = useState('');
@@ -117,7 +117,63 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     };
   };
 
+  const handlePageSpeed = async () => {
+    if (results.length === 0) return;
+    setStatusText('Running bulk PageSpeed & Analysis...');
+    setIsScraping(true);
+    try {
+        const payload = results.map(r => ({ id: r.id, url: r.website || '', name: r.name }));
+        const analyzeRes = await bulkAnalyze(payload);
+        const newResults = results.map(r => {
+            if (analyzeRes[r.id]) {
+                return { 
+                    ...r, 
+                    pageSpeedMobile: analyzeRes[r.id].pageSpeedMobile || r.pageSpeedMobile,
+                    pageSpeedDesktop: analyzeRes[r.id].pageSpeedDesktop || r.pageSpeedDesktop,
+                    qualityScore: analyzeRes[r.id].digitalScore || r.qualityScore,
+                    analysisBullets: analyzeRes[r.id].analysisBullets || r.analysisBullets
+                };
+            }
+            return r;
+        });
+        setResults(newResults);
+        setStatusText('Quality Analysis Complete.');
+    } catch (e: any) {
+        console.error(e);
+        setStatusText('Analysis failed: ' + e.message);
+    } finally {
+        setIsScraping(false);
+    }
+  };
 
+  const handleCheckAdsFallbackEmail = async () => {
+    if (results.length === 0) return;
+    setStatusText('Running bulk Google Ads & Email checks (Serper+Apify)...');
+    setIsScraping(true);
+    try {
+        const payload = results.map(r => ({ id: r.id, name: r.name, address: r.address, website: r.website || '' }));
+        const enrichRes = await bulkEnrich(payload);
+        const newResults = results.map(r => {
+            if (enrichRes[r.id] && !enrichRes[r.id].error) {
+                return { 
+                    ...r, 
+                    contactEmail: enrichRes[r.id].email || r.contactEmail,
+                    phone: enrichRes[r.id].phone || r.phone,
+                    instagram: enrichRes[r.id].instagram || r.instagram,
+                    linkedin: enrichRes[r.id].linkedin || r.linkedin,
+                };
+            }
+            return r;
+        });
+        setResults(newResults);
+        setStatusText('Enrichment Complete.');
+    } catch (e: any) {
+        console.error(e);
+        setStatusText('Enrichment failed: ' + e.message);
+    } finally {
+        setIsScraping(false);
+    }
+  };
 
   const filteredResults = useMemo(() => {
     return results.filter(r => {
@@ -207,7 +263,17 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                 <span className="text-slate-600">{statusText}</span>
             </div>
             
-
+            <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0 hide-scrollbar">
+                <button onClick={handlePageSpeed} disabled={isScraping || results.length === 0} className="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg border border-blue-200 text-xs font-medium hover:bg-blue-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
+                    <Activity size={14} /> Website Quality & Score (PageSpeed)
+                </button>
+                <button onClick={handleCheckAdsFallbackEmail} disabled={isScraping || results.length === 0} className="bg-orange-50 text-orange-600 px-3 py-1.5 rounded-lg border border-orange-200 text-xs font-medium hover:bg-orange-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
+                    <ExternalLink size={14} /> Check Google Ads (Serper)
+                </button>
+                <button onClick={handleCheckAdsFallbackEmail} disabled={isScraping || results.length === 0} className="bg-cyan-50 text-cyan-600 px-3 py-1.5 rounded-lg border border-cyan-200 text-xs font-medium hover:bg-cyan-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
+                    <Mail size={14} /> Fallback Email Search (Gemini Context)
+                </button>
+            </div>
         </div>
 
         {/* Filter Bar */}

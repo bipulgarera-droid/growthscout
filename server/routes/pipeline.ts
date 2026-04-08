@@ -154,6 +154,58 @@ router.post('/api/pipeline/analyze', async (req, res) => {
     }
 });
 
+import { findFounderInfo } from '../services/serper.js';
+import { scrapeContactInfoApify } from '../services/apifyEnrichment.js';
+
+// Bulk enrich handles the 'Check Google Ads' and 'Fallback Email Search' buttons
+router.post('/api/pipeline/enrich', async (req, res) => {
+    try {
+        const { leads } = req.body;
+        if (!leads || !Array.isArray(leads)) {
+            return res.status(400).json({ error: 'leads array required' });
+        }
+
+        const results: Record<string, any> = {};
+        for (const lead of leads) {
+            try {
+                // Mimicking tools.ts enrich endpoint
+                const serperData = await findFounderInfo(lead.name, lead.address);
+                const hasEmail = !!serperData.email;
+                let apifyData: any = {};
+                
+                if (!hasEmail) {
+                    apifyData = await scrapeContactInfoApify(lead.name, lead.address, lead.website);
+                }
+
+                const mergeStrings = (str1: string | undefined, str2: string | undefined) => {
+                    const arr = new Set<string>();
+                    if (str1) str1.split(',').forEach(s => arr.add(s.trim()));
+                    if (str2) str2.split(',').forEach(s => arr.add(s.trim()));
+                    if (arr.size === 0) return undefined;
+                    return Array.from(arr).join(', ');
+                };
+
+                results[lead.id] = {
+                    email: mergeStrings(apifyData.email, serperData.email),
+                    phone: mergeStrings(apifyData.phone, serperData.phone),
+                    linkedin: apifyData.linkedin || serperData.linkedin,
+                    instagram: apifyData.instagram || serperData.instagram,
+                    facebook: apifyData.facebook || serperData.facebook,
+                    sources: Array.from(new Set([...(apifyData.sources || []), ...(serperData.sources || [])]))
+                };
+            } catch (err) {
+                console.error(`Enrich failed for ID ${lead.id}:`, err);
+                results[lead.id] = { error: 'Failed' };
+            }
+        }
+
+        res.json({ success: true, results });
+    } catch (error: any) {
+        console.error('Bulk Enrich Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 import { generateAllMessages, LeadOutreachInput } from '../services/outreach.js';
 
 router.post('/api/pipeline/generate', async (req, res) => {

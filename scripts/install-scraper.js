@@ -42,16 +42,14 @@ async function downloadBinary() {
 
     const targetFile = path.resolve(targetDir, `google_maps_scraper${ext}`);
 
-    console.log(`Downloading ${filename} from GitHub...`);
-    
-    // We can use curl for simplicity as it exists on railway and macos
+    // Destroy corrupted cache layer if it exists (in case a github 403 HTML page was cached)
+    if (fs.existsSync(targetFile)) {
+        fs.unlinkSync(targetFile);
+    }
+
     try {
-        if (!fs.existsSync(targetFile)) {
-            console.log(`Running: curl -f -L -o "${targetFile}" "${url}"`);
-            execSync(`curl -f -L -o "${targetFile}" "${url}"`, { stdio: 'inherit' });
-        } else {
-            console.log(`Binary already exists at ${targetFile}, skipping download to prevent rate-limiting.`);
-        }
+        console.log(`Running: curl -f -L -o "${targetFile}" "${url}"`);
+        execSync(`curl -f -L -o "${targetFile}" "${url}"`, { stdio: 'inherit' });
         
         if (platform !== 'windows') {
             execSync(`chmod +x "${targetFile}"`);

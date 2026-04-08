@@ -99,7 +99,9 @@ app.get('/api/pipeline/stream', async (req, res) => {
                 // We need to map it slightly to fit the DB schema expectations like the frontend did
                 // CRITICAL: place_id from Google Maps is NOT a UUID — must generate proper UUIDs
                 const { randomUUID } = await import('crypto');
-                const bRecords = result.records.map((r: any) => ({
+                const bRecords = result.records
+                    .filter((r: any) => r.name && r.name.trim().length > 0)
+                    .map((r: any) => ({
                     id: randomUUID(),
                     name: r.name,
                     address: r.address,

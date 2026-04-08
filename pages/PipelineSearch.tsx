@@ -146,12 +146,21 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     }
   };
 
+  const extractCity = (address?: string) => {
+      if (!address) return '';
+      const parts = address.split(',');
+      if (parts.length >= 2) {
+          return parts[parts.length - 2].trim();
+      }
+      return address.trim();
+  };
+
   const handleCheckAds = async () => {
     if (results.length === 0) return;
     setStatusText('Checking Google Ads via Serper...');
     setIsScraping(true);
     try {
-        const payload = results.map(r => ({ id: r.id, name: r.name, city: city || r.address || '' }));
+        const payload = results.map(r => ({ id: r.id, name: r.name, city: city || r.searchLocation || extractCity(r.address) || '' }));
         const adsData = await bulkCheckAds(payload);
         
         const newResults = results.map(r => {

@@ -215,6 +215,7 @@ const rowToBusiness = (r: LeadRow): Business => ({
     screenshots: r.screenshots || undefined,
     previewSiteUrl: r.preview_url || undefined,
     auditResult: r.audit_data || undefined,
+    runningAds: r.audit_data?.running_ads ?? undefined,
     pageSpeedMobile: r.pagespeed_mobile || undefined,
     pageSpeedDesktop: r.pagespeed_desktop || undefined,
     analysisBullets: r.analysis_bullets || undefined,

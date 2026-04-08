@@ -89,6 +89,37 @@ app.get('/api/pipeline/stream', async (req, res) => {
         });
 
         clearInterval(ping);
+
+        if (result.success && result.records && result.records.length > 0) {
+            try {
+                // Instantly persist data to Supabase on the backend before relying on frontend
+                res.write(`data: ${JSON.stringify({ type: 'log', message: 'Saving leads to Supabase...' })}\n\n`);
+                
+                // We need to map it slightly to fit the DB schema expectations like the frontend did
+                const bRecords = result.records.map((r: any) => ({
+                    id: r.place_id,
+                    name: r.name,
+                    address: r.address,
+                    website: r.website || '',
+                    phone: r.phone || '',
+                    rating: r.score || 0,
+                    reviewCount: r.reviews || 0,
+                    category: r.niche || service,
+                    contactEmail: r.email || '',
+                    status: 'new',
+                    qualityScore: r.score || 0
+                }));
+                
+                const { bulkSaveBusinesses } = await import('./services/persistence.js');
+                await bulkSaveBusinesses(bRecords);
+                
+                res.write(`data: ${JSON.stringify({ type: 'log', message: 'Successfully synced to database.' })}\n\n`);
+            } catch (saveErr) {
+                console.error("Backend persistence failed:", saveErr);
+                res.write(`data: ${JSON.stringify({ type: 'log', message: 'Warning: Failed to save to database natively.' })}\n\n`);
+            }
+        }
+
         res.write(`data: ${JSON.stringify({ type: 'complete', result })}\n\n`);
         res.end();
     } catch (err: any) {

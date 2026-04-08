@@ -472,7 +472,7 @@ const App = () => {
                    onUpdateClient={updateSearchResult}
                 />
               } />
-              <Route path="/pipeline" element={<PipelineSearch />} />
+              <Route path="/pipeline" element={<PipelineSearch initialResults={searchResults} onUpdateResult={updateSearchResult} />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </div>

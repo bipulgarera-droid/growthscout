@@ -3,13 +3,20 @@ import { Search, Loader2, Play, Building2, MapPin, Database, Filter, ExternalLin
 import { Business } from '../types';
 import { generateWebsite, uploadLogo, enrichBusiness } from '../services/backendApi';
 
-export default function PipelineSearch() {
+export default function PipelineSearch({ initialResults = [], onUpdateResult }: { initialResults?: any[], onUpdateResult?: (id: string, data: Partial<Business>) => void }) {
   const [service, setService] = useState('');
   const [city, setCity] = useState('');
   const [targetCount, setTargetCount] = useState('100');
   const [isScraping, setIsScraping] = useState(false);
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<any[]>(initialResults);
   const [statusText, setStatusText] = useState('Idle');
+
+  // Sync with global changes when pipeline modal is closed
+  React.useEffect(() => {
+    if (!isScraping && initialResults.length > 0) {
+      setResults(initialResults);
+    }
+  }, [initialResults, isScraping]);
 
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -81,7 +88,12 @@ export default function PipelineSearch() {
             } else if (data.type === 'complete') {
                 const resultData = data.result;
                 if (resultData.records && resultData.records.length > 0) {
-                    setResults(resultData.records);
+                    // Update our view, but let App.tsx auto-sync take care of DB persistence naturally
+                    setResults(prev => {
+                        const existingNames = new Set(prev.map(p => p.name.toLowerCase()));
+                        const newOnes = resultData.records.filter((r: any) => !existingNames.has(r.name.toLowerCase()));
+                        return [...newOnes, ...prev];
+                    });
                     setStatusText(`Complete. Loaded ${resultData.records.length} businesses.`);
                 } else {
                     setStatusText(`Complete. No valid records found in resulting CSV.`);
@@ -483,6 +495,7 @@ export default function PipelineSearch() {
                                      try {
                                        const res = await uploadLogo(selectedContact.id, { logoData: base64data });
                                        setSelectedContact(prev => prev ? {...prev, logoUrl: res.logoUrl} : null);
+                                       if (onUpdateResult) onUpdateResult(selectedContact.id, { logoUrl: res.logoUrl });
                                      } catch (err: any) {
                                        alert('Logo upload failed: ' + err.message);
                                      } finally {
@@ -516,6 +529,7 @@ export default function PipelineSearch() {
                                    try {
                                      const res = await uploadLogo(selectedContact.id, { logoUrl: logoUploadUrl });
                                      setSelectedContact(prev => prev ? {...prev, logoUrl: res.logoUrl} : null);
+                                     if (onUpdateResult) onUpdateResult(selectedContact.id, { logoUrl: res.logoUrl });
                                      setLogoUploadUrl('');
                                    } catch (err: any) {
                                      alert('Logo upload failed: ' + err.message);
@@ -553,6 +567,7 @@ export default function PipelineSearch() {
                               instagram: data.instagram || (selectedContact as any).instagram,
                             };
                             setSelectedContact(updated as any);
+                            if (onUpdateResult) onUpdateResult(selectedContact.id, updated);
                           } catch (err: any) {
                             alert('Enrichment failed: ' + err.message);
                           } finally {

@@ -84,7 +84,6 @@ export async function runScrapingPipeline(service: string, city: string, targetC
                 '-input', queryFile,
                 '-c', '1',
                 '-depth', '10',
-                '-email',
                 '-results', currentResultsFile
             ], { cwd: path.dirname(BINARY_PATH) });
 

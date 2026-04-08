@@ -117,10 +117,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     };
   };
 
-  // Enrichment Hook Buttons (To be wired)
-  const runFallbackEmailSearch = () => { alert('Triggering Gemini URL Context Search for missing emails...'); };
-  const runSerperAdCheck = () => { alert('Triggering Serper.dev Ads verification...'); };
-  const runWebsiteQualityCheck = () => { alert('Triggering PageSpeed Insights scoring...'); };
+
 
   const filteredResults = useMemo(() => {
     return results.filter(r => {
@@ -210,17 +207,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                 <span className="text-slate-600">{statusText}</span>
             </div>
             
-            <div className="flex gap-2">
-                <button onClick={runWebsiteQualityCheck} className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors">
-                    <Activity size={14}/> Website Quality & Score (PageSpeed)
-                </button>
-                <button onClick={runSerperAdCheck} className="px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors">
-                    <ExternalLink size={14}/> Check Google Ads (Serper)
-                </button>
-                <button onClick={runFallbackEmailSearch} className="px-3 py-1.5 bg-brand-50 text-brand-700 hover:bg-brand-100 border border-brand-200 text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors">
-                    <Mail size={14}/> Fallback Email Search (Gemini Context)
-                </button>
-            </div>
+
         </div>
 
         {/* Filter Bar */}

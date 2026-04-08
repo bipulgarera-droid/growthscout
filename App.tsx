@@ -9,83 +9,12 @@ import { useProject } from './context/ProjectContext';
 import { Business } from './types';
 import { discoverBusinesses, enrichBusiness, loadBusinessesFromDB, syncBusinessesToDB, saveBusinessToDB, updateBusinessInDB, searchRankings, saveRankings } from './services/backendApi';
 
-// LocalStorage keys (kept as fallback)
-const LEADS_STORAGE_KEY = 'growthscout_leads';
-const SEARCH_RESULTS_STORAGE_KEY = 'growthscout_search_results';
-
-// Default lead for demo
-const DEFAULT_LEADS: Business[] = [
-  {
-    id: 'lead-1',
-    name: 'Shawn Paul Salon',
-    address: '2000 Example Rd, Cleveland, OH',
-    category: 'Hair Salon',
-    rating: 4.8,
-    reviewCount: 420,
-    phone: '216-555-1234',
-    status: 'contacted',
-    qualityScore: 92,
-    digitalScore: 80,
-    seoScore: 65,
-    socialScore: 85,
-    estimatedValue: 3500,
-    isQualified: true,
-    redesignImageUrl: 'https://images.unsplash.com/photo-1560060141-7b9018741ced?q=80&w=2938&auto=format&fit=crop'
-  }
-];
-
-// Helper to load/save localStorage (fallback)
-const loadFromStorage = <T,>(key: string, defaultVal: T): T => {
-  try {
-    const stored = localStorage.getItem(key);
-    if (stored) return JSON.parse(stored);
-  } catch (e) {
-    console.error(`Failed to load ${key}`, e);
-  }
-  return defaultVal;
-};
-
-const saveToStorage = (key: string, data: any) => {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch (e) {
-    console.error(`Failed to save ${key}`, e);
-  }
-};
+// LocalStorage backup removed to prevent dual-sync crashes
+// Supabase is now the single source of truth
 
 const App = () => {
   // Search Store (Global State to survive navigation)
-  const [searchResults, setSearchResults] = useState<Business[]>(() => {
-    // 1. Recover from Search Results Storage
-    const localSearch = loadFromStorage<Business[]>(SEARCH_RESULTS_STORAGE_KEY, []);
-    // 2. Recover from Leads Storage (Pipeline)
-    const localLeads = loadFromStorage<Business[]>(LEADS_STORAGE_KEY, []);
-
-    // HEAL IDs: Ensure everything has a valid UUID format
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    const healLeads = (leads: Business[]) => leads.map(l => {
-      if (!l.id || !uuidRegex.test(l.id)) {
-        return { ...l, id: crypto.randomUUID() };
-      }
-      return l;
-    });
-
-    const healedSearch = healLeads(localSearch);
-    const healedLeads = healLeads(localLeads);
-
-    // Merge immediately on startup to prevent flash of empty content
-    const combined = [...healedSearch];
-    const ids = new Set(healedSearch.map(b => b.id));
-
-    healedLeads.forEach(l => {
-      if (!ids.has(l.id)) {
-        combined.push(l);
-        ids.add(l.id);
-      }
-    });
-
-    return combined;
-  });
+  const [searchResults, setSearchResults] = useState<Business[]>([]);
 
   const [isSearching, setIsSearching] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -105,51 +34,15 @@ const App = () => {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        // 1. Get ALL LocalStorage Data again (Source of Truth)
-        const localSearch = loadFromStorage<Business[]>(SEARCH_RESULTS_STORAGE_KEY, []);
-        const localLeads = loadFromStorage<Business[]>(LEADS_STORAGE_KEY, []);
-
-        console.log(`[App] Storage Report: ${localSearch.length} search results, ${localLeads.length} pipeline leads`);
-
-        // 2. Load from Supabase filtered by PROJECT
         console.log(`[App] Loading businesses from Supabase for project: ${activeProject.name}`);
         const dbBusinesses = await loadBusinessesFromDB(activeProject.id);
         console.log(`[App] Found ${dbBusinesses.length} businesses in Supabase`);
-
-        // 3. MASTER MERGE strategy
-        // Priority: Local updates > DB updates (for now), but we want UNION of all
-        const masterMap = new Map<string, Business>();
-
-        // Add DB items first
-        dbBusinesses.forEach(b => masterMap.set(b.id, b));
-
-        // Note: For now we still overlay local items even if they might belong to another project
-        // since the migration strategy handles this, but in future local storage should be deprecated
-        localSearch.forEach(b => masterMap.set(b.id, b));
-        localLeads.forEach(b => masterMap.set(b.id, b));
-
-        const merged = Array.from(masterMap.values());
-        console.log(`[App] Master Merge Total: ${merged.length} unique businesses`);
-
-        setSearchResults(merged);
-
-        // 4. Auto-Sync missing items to Supabase
-        // If we have more items in memory than came from DB, we need to push updates
-        const memoryCount = localSearch.length + localLeads.length;
-        if (memoryCount > 0 && merged.length > dbBusinesses.length) {
-          // ensure project id is attached before syncing
-          const toSync = merged.map(m => ({ ...m, projectId: m.projectId || activeProject.id }));
-          console.log(`[App] Auto-syncing merged data (${toSync.length} items) to Supabase in background...`);
-          syncBusinessesToDB(toSync).catch(err => {
-            console.error('[App] Background auto-sync failed:', err);
-          });
-        }
-
+        
+        setSearchResults(dbBusinesses);
         setDbError(null);
       } catch (error: any) {
-        console.error('[App] Failed to load/sync from Supabase:', error);
+        console.error('[App] Failed to load from Supabase:', error);
         setDbError(error.message);
-        // We already loaded local data in useState initializer, so we're good
       } finally {
         setIsLoading(false);
       }
@@ -158,49 +51,8 @@ const App = () => {
     loadData();
   }, [activeProject]);
 
-  // NOTE: localStorage backup removed - now only used as fallback when Supabase fails
-  // This prevents localStorage from filling up with large screenshot data
-
-  // Supabase-first sync with localStorage fallback
-  const syncTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
-  const [offlineMode, setOfflineMode] = useState(false);
-
-  useEffect(() => {
-    if (searchResults.length === 0 || isLoading) return;
-
-    // Clear existing timeout
-    if (syncTimeoutRef.current) {
-      clearTimeout(syncTimeoutRef.current);
-    }
-
-    // Debounce: sync after 2 seconds of no changes
-    syncTimeoutRef.current = setTimeout(async () => {
-      try {
-        console.log(`[App] Auto-syncing ${searchResults.length} businesses to Supabase...`);
-        await syncBusinessesToDB(searchResults);
-        console.log('[App] Auto-sync complete');
-        setOfflineMode(false); // Supabase is working, clear offline mode
-        setDbError(null);
-      } catch (error: any) {
-        console.error('[App] Auto-sync failed, falling back to localStorage:', error);
-        // FALLBACK: Only save to localStorage when Supabase fails
-        try {
-          saveToStorage(SEARCH_RESULTS_STORAGE_KEY, searchResults);
-          console.log('[App] Saved to localStorage as fallback');
-        } catch (storageError) {
-          console.error('[App] localStorage fallback also failed:', storageError);
-        }
-        setOfflineMode(true);
-        setDbError(error.message);
-      }
-    }, 2000);
-
-    return () => {
-      if (syncTimeoutRef.current) {
-        clearTimeout(syncTimeoutRef.current);
-      }
-    };
-  }, [searchResults, isLoading]);
+  // NOTE: localStorage dual-sync and auto-sync removed.
+  // We prefer explicit saves or backend native persisting to avoid state corruption headers.
 
   // Manual sync function (for "Sync to DB" button)
   const syncToSupabase = useCallback(async () => {
@@ -415,39 +267,12 @@ const App = () => {
             {/* DB Status Bar */}
             {dbError && (
               <div className="bg-red-100 border-b border-red-200 px-4 py-2 text-sm text-red-700 flex items-center justify-between">
-                <span>⚠️ Database error: {dbError}. Using local storage.</span>
-                <button onClick={syncToSupabase} className="text-red-800 underline hover:no-underline">
-                  Retry Sync
+                <span>⚠️ Database error: {dbError}.</span>
+                <button onClick={() => window.location.reload()} className="text-red-800 underline hover:no-underline">
+                  Reload Data
                 </button>
               </div>
             )}
-
-            {/* DEBUG: Storage Status Banner */}
-            <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2 text-xs text-yellow-800 font-mono flex items-center justify-between">
-              <span>
-                📊 DEBUG: LocalStorage Status |
-                search_results: {(() => {
-                  try {
-                    const val = localStorage.getItem('growthscout_search_results');
-                    return val ? JSON.parse(val).length : 0;
-                  } catch { return 'ERROR'; }
-                })()} items |
-                leads: {(() => {
-                  try {
-                    const val = localStorage.getItem('growthscout_leads');
-                    return val ? JSON.parse(val).length : 0;
-                  } catch { return 'ERROR'; }
-                })()} items |
-                In Memory: {searchResults.length} items
-              </span>
-              <button
-                onClick={syncToSupabase}
-                disabled={isSyncing}
-                className="bg-yellow-600 text-white px-3 py-1 rounded text-xs hover:bg-yellow-700 disabled:opacity-50"
-              >
-                {isSyncing ? '⏳ Syncing...' : '🔄 Sync to DB'}
-              </button>
-            </div>
 
             <Routes>
               <Route path="/" element={

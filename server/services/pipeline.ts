@@ -97,13 +97,19 @@ export async function runScrapingPipeline(service: string, city: string, targetC
             });
 
             scraperProcess.on('close', (code) => {
+                console.log(`[Pipeline] Scraper process exited with code ${code}. Checking for CSV at: ${currentResultsFile}`);
                 if (fs.existsSync(currentResultsFile)) {
                     try {
                         const csvData = fs.readFileSync(currentResultsFile, 'utf-8');
                         const lines = csvData.split('\n').filter((l: string) => l.trim().length > 0);
                         
-                        if (lines.length > 0) {
-                            const headers = lines[0].split(',').map((h: string) => h.trim().toLowerCase());
+                        console.log(`[Pipeline] CSV has ${lines.length} lines. First line (headers): ${lines[0]?.substring(0, 200)}`);
+                        
+                        if (lines.length > 1) {
+                            // Use parseLine for headers too — naive split fails on quoted headers
+                            const headers = parseLine(lines[0]).map((h: string) => h.trim().toLowerCase());
+                            console.log(`[Pipeline] Parsed headers: ${JSON.stringify(headers)}`);
+                            
                             for (let i = 1; i < lines.length; i++) {
                                 const values = parseLine(lines[i]);
                                 const record: any = {};
@@ -113,24 +119,29 @@ export async function runScrapingPipeline(service: string, city: string, targetC
                                 if (!allRecords.find(r => r.place_id === record.place_id)) {
                                     allRecords.push({
                                         place_id: record.place_id,
-                                        name: record.name,
+                                        name: record.name || record.title,
                                         phone: record.phone || record.phones,
                                         website: record.website,
                                         email: record.emails ? record.emails.split(',')[0] : null,
                                         ads: false,
                                         score: 0,
-                                        address: record.address,
-                                        niche: record.main_category,
-                                        reviews: parseInt(record.reviews) || 0
+                                        address: record.address || record.full_address,
+                                        niche: record.main_category || record.category,
+                                        reviews: parseInt(record.reviews || record.reviews_count) || 0
                                     });
                                 }
                             }
+                            console.log(`[Pipeline] After parsing this shard: ${allRecords.length} total records`);
+                        } else {
+                            console.log(`[Pipeline] CSV has only header or is empty: ${lines.length} lines`);
                         }
                         // Delete CSV so next iteration starts fresh
                         fs.unlinkSync(currentResultsFile);
                     } catch (e: any) {
                         console.error("Failed to parse CSV shard", e);
                     }
+                } else {
+                    console.log(`[Pipeline] WARNING: CSV file does NOT exist at ${currentResultsFile}`);
                 }
                 resolve(true);
             });

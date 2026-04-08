@@ -131,15 +131,15 @@ interface LeadRow {
 const businessToRow = (b: Business): Partial<LeadRow> => {
     const row: any = {
         business_name: b.name,
-        address: b.address,
-        category: b.category,
+        address: b.address || null,
+        category: b.category || null,
         rating: b.rating || 0,
         review_count: b.reviewCount || 0,
         phone: b.phone || null,
         email: b.email || null,
         website: b.website || null,
         original_url: b.website || null,
-        status: b.status,
+        status: b.status || 'new',
         quality_score: b.qualityScore || 0,
         digital_score: b.digitalScore || 0,
         seo_score: b.seoScore || 0,
@@ -279,6 +279,24 @@ export const bulkSaveBusinesses = async (businesses: Business[]): Promise<{ save
 
     const rows = dedupedBusinesses.map(businessToRow);
 
+    // CRITICAL FIX: PostgREST bulk insert crashes if keys are not 100% uniform across all objects
+    // Even if one object lacks an "id", it crashes.
+    const allKeys = new Set<string>();
+    rows.forEach(r => Object.keys(r).forEach(k => allKeys.add(k)));
+
+    // Prevent passing 'null' for ID constraint failure if ID is strictly expected. 
+    // If ANY row has an ID, we MUST supply an ID for ALL rows (or PostgREST fails). 
+    // Supabase will throw NOT NULL violation if we pass null uuid, so we should drop `id` entirely IF someone is missing it?
+    // Actually, pipeline explicitly builds uuids, so we are safe mapping missing keys to null. 
+    // The previous bug was mainly `address` being `undefined` and disappearing from the JSON.
+    const uniformRows = rows.map((r: any) => {
+        const uniformRow: any = {};
+        for (const k of allKeys) {
+            uniformRow[k] = r[k] === undefined ? null : r[k];
+        }
+        return uniformRow;
+    });
+
     console.log(`[Persistence] Bulk saving ${rows.length} businesses to Supabase (deduped from ${businesses.length})...`);
 
     const response = await fetch(`${SUPABASE_URL}/rest/v1/leads?on_conflict=business_name`, {
@@ -289,7 +307,7 @@ export const bulkSaveBusinesses = async (businesses: Business[]): Promise<{ save
             'Content-Type': 'application/json',
             'Prefer': 'resolution=merge-duplicates'
         },
-        body: JSON.stringify(rows)
+        body: JSON.stringify(uniformRows)
     });
 
     if (!response.ok) {

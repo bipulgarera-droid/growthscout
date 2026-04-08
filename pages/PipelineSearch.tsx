@@ -148,7 +148,10 @@ export default function PipelineSearch() {
                 <option value="100">Limit: 100</option>
                 <option value="250">Limit: 250</option>
                 <option value="500">Limit: 500</option>
-                <option value="1000">Limit: 1000+</option>
+                <option value="1000">Limit: 1000</option>
+                <option value="2000">Limit: 2000</option>
+                <option value="5000">Limit: 5000</option>
+                <option value="10000">Limit: 10000</option>
             </select>
           </div>
           <button

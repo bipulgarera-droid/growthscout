@@ -1,10 +1,13 @@
 # ---- Build Stage ----
 FROM node:20-slim AS builder
 
+RUN apt-get update && apt-get install -y curl ca-certificates --no-install-recommends && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy package files and install all deps (including devDeps for build)
 COPY package.json package-lock.json* ./
+COPY scripts/ ./scripts/
 RUN npm install
 
 # Copy source and build the Vite frontend
@@ -14,8 +17,10 @@ RUN npm run build
 # ---- Production Stage ----
 FROM node:20-slim
 
-# Install Chromium dependencies for Puppeteer
+# Install Chromium dependencies for Puppeteer and curl for the downloader
 RUN apt-get update && apt-get install -y \
+    curl \
+    ca-certificates \
     chromium \
     fonts-liberation \
     libatk-bridge2.0-0 \
@@ -42,6 +47,7 @@ WORKDIR /app
 
 # Copy package files and install all deps (tsx is in dependencies now)
 COPY package.json package-lock.json* ./
+COPY scripts/ ./scripts/
 RUN npm install --omit=dev
 
 # Copy built frontend from builder

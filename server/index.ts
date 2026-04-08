@@ -246,6 +246,8 @@ app.post('/api/enrich', async (req, res) => {
 });
 
 
+import { getLeads } from './services/persistence.js';
+
 app.get('/api/leads', async (req, res) => {
     try {
         const projectId = req.query.projectId as string | undefined;
@@ -402,39 +404,8 @@ app.post('/api/pipeline/analyze', async (req, res) => {
     } catch (error: any) {
         console.error('Bulk Analysis Error:', error);
         res.status(500).json({ error: error.message });
-    }
-});
-
-// ============ BULK ENRICH ============
-// Manual Pipeline Run (Single Lead by URL)
-import { processLead } from './services/pipeline.js';
-
-app.post('/api/pipeline/manual', async (req, res) => {
-    try {
-        const { url, name, city, projectId, templateType } = req.body;
-        if (!url) {
-            return res.status(400).json({ error: 'URL is required' });
-        }
-
-        // Construct DiscoveredBusiness from manual input
-        const business = {
-            name: name || new URL(url).hostname.replace('www.', ''),
-            address: city || 'Unknown Location',
-            website: url,
-            phone: '', // Will be enriched
-            rating: 0,
-            reviewCount: 0,
-            category: 'Manual Lead'
-        };
-
-        console.log(`[Pipeline-Manual] Processing ${business.name} (${url})`);
-        const result = await processLead(business, projectId, templateType);
-
-        res.json(result);
-
-    } catch (error: any) {
-        console.error('Manual Pipeline Error:', error);
-        res.status(500).json({ error: error.message });
+        // ============ BULK ENRICH ============
+        // Left blank for future extraction logic
     }
 });
 

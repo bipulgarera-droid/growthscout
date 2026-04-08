@@ -64,6 +64,7 @@ import { runScrapingPipeline } from './services/pipeline.js';
 app.get('/api/pipeline/stream', async (req, res) => {
     const service = req.query.service as string;
     const city = req.query.city as string;
+    const projectId = req.query.projectId as string;
     const targetCount = parseInt(req.query.targetCount as string) || 100;
     
     if (!service || !city) {
@@ -107,7 +108,8 @@ app.get('/api/pipeline/stream', async (req, res) => {
                     category: r.niche || service,
                     contactEmail: r.email || '',
                     status: 'new',
-                    qualityScore: r.score || 0
+                    qualityScore: r.score || 0,
+                    projectId: (projectId as string) || undefined
                 }));
                 
                 const { bulkSaveBusinesses } = await import('./services/persistence.js');

@@ -2,8 +2,10 @@ import React, { useState, useMemo } from 'react';
 import { Search, Loader2, Play, Building2, MapPin, Database, Filter, ExternalLink, Activity, Mail, Check, RefreshCw, Smartphone, X, User, Globe, ChevronDown } from 'lucide-react';
 import { Business } from '../types';
 import { generateWebsite, uploadLogo, enrichBusiness } from '../services/backendApi';
+import { useProject } from '../context/ProjectContext';
 
 export default function PipelineSearch({ initialResults = [], onUpdateResult }: { initialResults?: any[], onUpdateResult?: (id: string, data: Partial<Business>) => void }) {
+  const { activeProject } = useProject();
   const [service, setService] = useState('');
   const [city, setCity] = useState('');
   const [targetCount, setTargetCount] = useState('100');
@@ -78,7 +80,7 @@ export default function PipelineSearch({ initialResults = [], onUpdateResult }: 
     setResults([]);
     setSelectedIds(new Set());
     
-    const evtSource = new EventSource(`/api/pipeline/stream?service=${encodeURIComponent(service)}&city=${encodeURIComponent(city)}&targetCount=${targetCount}`);
+    const evtSource = new EventSource(`/api/pipeline/stream?service=${encodeURIComponent(service)}&city=${encodeURIComponent(city)}&targetCount=${targetCount}&projectId=${activeProject?.id || ''}`);
 
     evtSource.onmessage = (event) => {
         try {

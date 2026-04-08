@@ -1,7 +1,6 @@
 import os from 'os';
 import fs from 'fs';
 import path from 'path';
-import https from 'https';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
@@ -11,13 +10,13 @@ const __dirname = path.dirname(__filename);
 const VERSION = 'v1.11.0';
 const REPO = 'gosom/google-maps-scraper';
 
-const platformMap: Record<string, string> = {
+const platformMap = {
     darwin: 'darwin',
     linux: 'linux',
     win32: 'windows'
 };
 
-const archMap: Record<string, string> = {
+const archMap = {
     x64: 'amd64',
     arm64: 'amd64' // For M1/M2 Rosetta 2 will handle it, or we try to find arm64 if it existed, but gosom only has amd64
 };
@@ -54,7 +53,7 @@ async function downloadBinary() {
             execSync(`chmod +x "${targetFile}"`);
         }
         console.log(`Successfully installed google-maps-scraper to ${targetFile}`);
-    } catch (err: any) {
+    } catch (err) {
         console.error(`Failed to download binary:`, err.message);
         process.exit(1);
     }

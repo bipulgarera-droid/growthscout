@@ -39,13 +39,15 @@ import rankingsRoutes from './routes/rankings.js';
 import outreachRoutes from './routes/outreach.js';
 import fulfillmentRoutes from './routes/fulfillment.js';
 
-// Mount Routers (paths were stripped of their prefix in the extractor script)
-app.use('/api/pipeline', pipelineRoutes);
-app.use('/api/slides', slidesRoutes);
-app.use('/api', toolsRoutes); // discover, enrich, analyze, screenshot, chat
-app.use('/api', leadsRoutes); // projects, leads
-app.use('/api/rankings', rankingsRoutes);
-app.use('/api', outreachRoutes); // projects, push-to-outreach
+// Mount Routers
+// Note: Internal route definitions in the files still use their full absolute paths (e.g. /api/pipeline/stream)
+// so we mount them all at root to prevent nested paths like /api/api/pipeline.
+app.use('/', pipelineRoutes);
+app.use('/', slidesRoutes);
+app.use('/', toolsRoutes);     // discover, enrich, analyze, screenshot, chat
+app.use('/', leadsRoutes);     // projects, leads
+app.use('/', rankingsRoutes);
+app.use('/', outreachRoutes);  // projects, push-to-outreach
 app.use('/', fulfillmentRoutes); // webhooks, r/:slug, reviews
 
 // In non-production, root is just an info message

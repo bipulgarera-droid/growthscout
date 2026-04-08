@@ -63,7 +63,7 @@ router.get('/api/pipeline/stream', async (req, res) => {
                     searchLocation: city as string,
                 }));
                 
-                const { bulkSaveBusinesses } = await import('./services/persistence.js');
+                const { bulkSaveBusinesses } = await import('../services/persistence.js');
                 await bulkSaveBusinesses(bRecords);
                 
                 res.write(`data: ${JSON.stringify({ type: 'log', message: 'Successfully synced to database.' })}\n\n`);

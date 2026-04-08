@@ -6,7 +6,7 @@ const router = Router();
 const OUTREACH_API_URL = process.env.OUTREACH_API_URL || '';
 
 // Get Outreach projects (proxy to Outreach API)
-router.get('/projects', async (req, res) => {
+router.get('/api/outreach/projects', async (req, res) => {
     if (!OUTREACH_API_URL) {
         return res.status(500).json({ error: 'OUTREACH_API_URL not configured. Set it in environment variables.' });
     }
@@ -21,7 +21,7 @@ router.get('/projects', async (req, res) => {
 });
 
 // Push selected leads to Outreach
-router.post('/push-to-outreach', async (req, res) => {
+router.post('/api/push-to-outreach', async (req, res) => {
     if (!OUTREACH_API_URL) {
         return res.status(500).json({ error: 'OUTREACH_API_URL not configured. Set it in environment variables.' });
     }

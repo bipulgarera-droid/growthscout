@@ -2,11 +2,12 @@ import { Router } from 'express';
 
 
 const router = Router();
+import { supabase } from '../supabaseClient.js';
 
 import { bulkSaveBusinesses, updateBusinessField, saveBusiness, getProjects, createProject } from '../services/persistence.js';
 
 // Get Projects
-router.get('/projects', async (req, res) => {
+router.get('/api/projects', async (req, res) => {
     try {
         const projects = await getProjects();
         res.json({ success: true, projects });
@@ -17,7 +18,7 @@ router.get('/projects', async (req, res) => {
 });
 
 // Create Project
-router.post('/projects', async (req, res) => {
+router.post('/api/projects', async (req, res) => {
     try {
         const { name, description } = req.body;
         if (!name) return res.status(400).json({ error: 'Project name is required' });
@@ -31,7 +32,7 @@ router.post('/projects', async (req, res) => {
 });
 
 // Bulk sync businesses to Supabase
-router.post('/leads/sync', async (req, res) => {
+router.post('/api/leads/sync', async (req, res) => {
     try {
         const { businesses } = req.body;
         if (!businesses || !Array.isArray(businesses)) {
@@ -48,7 +49,7 @@ router.post('/leads/sync', async (req, res) => {
 });
 
 // Save single business
-router.post('/leads/save', async (req, res) => {
+router.post('/api/leads/save', async (req, res) => {
     try {
         const { business } = req.body;
         if (!business) {
@@ -64,7 +65,7 @@ router.post('/leads/save', async (req, res) => {
 });
 
 // Update a single lead field
-router.patch('/leads/:id', async (req, res) => {
+router.patch('/api/leads/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const updates = req.body;
@@ -77,7 +78,7 @@ router.patch('/leads/:id', async (req, res) => {
     }
 });
 
-router.post('/leads/:id/upload-logo', async (req, res) => {
+router.post('/api/leads/:id/upload-logo', async (req, res) => {
     try {
         const leadId = req.params.id;
         const { logoUrl, logoData } = req.body;

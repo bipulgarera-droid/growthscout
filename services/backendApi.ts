@@ -131,6 +131,36 @@ export const bulkEnrich = async (leads: { id: string; name: string; address: str
     return data.results;
 };
 
+// Bulk check google ads status (Serper)
+export const bulkCheckAds = async (leads: { id: string; name: string; city: string }[]): Promise<Record<string, boolean>> => {
+    const response = await fetch(`${API_BASE}/pipeline/check-ads`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leads })
+    });
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Bulk ads check failed');
+    }
+    const data = await response.json();
+    return data.results;
+};
+
+// Bulk fallback email search (Gemini URL Context)
+export const bulkFallbackEmail = async (leads: { id: string; website: string }[]): Promise<Record<string, string | null>> => {
+    const response = await fetch(`${API_BASE}/pipeline/fallback-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leads })
+    });
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Bulk email fallback failed');
+    }
+    const data = await response.json();
+    return data.results;
+};
+
 // Bulk analyze websites (screenshot + PageSpeed + Gemini scoring)
 export const bulkAnalyze = async (leads: { id: string; url: string; name: string }[]): Promise<Record<string, AnalysisResult>> => {
     const response = await fetch(`${API_BASE}/pipeline/analyze`, {

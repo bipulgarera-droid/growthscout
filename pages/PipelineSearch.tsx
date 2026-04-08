@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Search, Loader2, Play, Building2, MapPin, Database, Filter, ExternalLink, Activity, Mail, Check, RefreshCw, Smartphone, X, User, Globe, ChevronDown } from 'lucide-react';
 import { Business } from '../types';
-import { generateWebsite, uploadLogo, enrichBusiness, bulkEnrich, bulkAnalyze } from '../services/backendApi';
+import { generateWebsite, uploadLogo, enrichBusiness, bulkEnrich, bulkAnalyze, bulkCheckAds, bulkFallbackEmail } from '../services/backendApi';
 
 export default function PipelineSearch({ initialResults = [], projectId, onUpdateResult }: { initialResults?: any[], projectId?: string, onUpdateResult?: (id: string, data: Partial<Business>) => void }) {
   const [service, setService] = useState('');
@@ -152,20 +152,13 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     setIsScraping(true);
     try {
         const payload = results.map(r => ({ id: r.id, name: r.name, city: city || r.address || '' }));
-        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5010'}/pipeline/check-ads`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ leads: payload })
-        });
-        const data = await response.json();
+        const adsData = await bulkCheckAds(payload);
         
         const newResults = results.map(r => {
-            if (data.results && data.results[r.id] !== undefined) {
-                // In our current Business type, we might not have 'runningAds' but we can just use status or console log.
-                // Assuming we can append 'runningAds' virtually.
+            if (adsData[r.id] !== undefined) {
                 return { 
                     ...r, 
-                    runningAds: data.results[r.id] // boolean
+                    runningAds: adsData[r.id]
                 };
             }
             return r;
@@ -185,7 +178,6 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     setStatusText('Running Gemini Fallback Email Search...');
     setIsScraping(true);
     try {
-        // Only run for those lacking emails
         const payload = results.filter(r => !r.contactEmail && !r.email && r.website).map(r => ({ id: r.id, website: r.website }));
         if (payload.length === 0) {
             setStatusText('No missing emails with valid websites found.');
@@ -193,18 +185,13 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
             return;
         }
 
-        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5010'}/pipeline/fallback-email`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ leads: payload })
-        });
-        const data = await response.json();
+        const emailData = await bulkFallbackEmail(payload);
         
         const newResults = results.map(r => {
-            if (data.results && data.results[r.id] && data.results[r.id] !== 'NULL') {
+            if (emailData[r.id] && emailData[r.id] !== 'NULL') {
                 return { 
                     ...r, 
-                    contactEmail: data.results[r.id]
+                    contactEmail: emailData[r.id]
                 };
             }
             return r;

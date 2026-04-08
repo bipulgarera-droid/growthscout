@@ -6,6 +6,7 @@ import { generateWebsite } from '../services/backendApi';
 export default function PipelineSearch() {
   const [service, setService] = useState('');
   const [city, setCity] = useState('');
+  const [targetCount, setTargetCount] = useState('100'); // New Option
   const [isScraping, setIsScraping] = useState(false);
   const [results, setResults] = useState<any[]>([]);
   const [statusText, setStatusText] = useState('Idle');
@@ -48,7 +49,7 @@ export default function PipelineSearch() {
     setResults([]);
     
     // Switch to Server-Sent Events (SSE) to bypass ingress load balancer timeouts
-    const evtSource = new EventSource(`/api/pipeline/stream?service=${encodeURIComponent(service)}&city=${encodeURIComponent(city)}`);
+    const evtSource = new EventSource(`/api/pipeline/stream?service=${encodeURIComponent(service)}&city=${encodeURIComponent(city)}&targetCount=${targetCount}`);
 
     evtSource.onmessage = (event) => {
         try {
@@ -139,6 +140,16 @@ export default function PipelineSearch() {
               value={city}
               onChange={(e) => setCity(e.target.value)}
             />
+          </div>
+          
+          <div className="relative hidden md:block">
+            <select value={targetCount} onChange={(e) => setTargetCount(e.target.value)} className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500 font-medium text-slate-700 w-32 appearance-none">
+                <option value="50">Limit: 50</option>
+                <option value="100">Limit: 100</option>
+                <option value="250">Limit: 250</option>
+                <option value="500">Limit: 500</option>
+                <option value="1000">Limit: 1000+</option>
+            </select>
           </div>
           <button
             onClick={startPipeline}

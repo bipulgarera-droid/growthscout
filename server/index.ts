@@ -64,6 +64,7 @@ import { runScrapingPipeline } from './services/pipeline.js';
 app.get('/api/pipeline/stream', async (req, res) => {
     const service = req.query.service as string;
     const city = req.query.city as string;
+    const targetCount = parseInt(req.query.targetCount as string) || 100;
     
     if (!service || !city) {
         res.status(400).json({ error: 'Service and city required.' });
@@ -83,7 +84,7 @@ app.get('/api/pipeline/stream', async (req, res) => {
     const ping = setInterval(() => res.write(':ping\n\n'), 15000); 
 
     try {
-        const result = await runScrapingPipeline(service, city, (chunk) => {
+        const result = await runScrapingPipeline(service, city, targetCount, (chunk) => {
              res.write(`data: ${JSON.stringify({ type: 'log', message: chunk })}\n\n`);
         });
 

@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
-import { Search, Loader2, Play, Building2, MapPin, Database, Filter, ExternalLink, Activity, Mail } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Search, Loader2, Play, Building2, MapPin, Database, Filter, ExternalLink, Activity, Mail, Check, RefreshCw, Smartphone, X } from 'lucide-react';
+import { Business } from '../types';
+import { generateWebsite } from '../services/backendApi';
 
 export default function PipelineSearch() {
   const [service, setService] = useState('');
@@ -7,6 +9,37 @@ export default function PipelineSearch() {
   const [isScraping, setIsScraping] = useState(false);
   const [results, setResults] = useState<any[]>([]);
   const [statusText, setStatusText] = useState('Idle');
+
+  // Filters State
+  const [filterWebsite, setFilterWebsite] = useState<'both'|'has'|'doesnt'>('both');
+  const [filterAds, setFilterAds] = useState<'both'|'yes'|'no'>('both');
+  const [filterEmail, setFilterEmail] = useState<'both'|'yes'|'no'>('both');
+  const [filterPhone, setFilterPhone] = useState<'both'|'yes'|'no'>('both');
+  const [filterScore, setFilterScore] = useState<'both'|'below50'|'above50'>('both');
+
+  // Web Generation Modal State
+  const [selectedContact, setSelectedContact] = useState<Business | null>(null);
+  const [isModalActionLoading, setIsModalActionLoading] = useState(false);
+  const [localHeroPhrases, setLocalHeroPhrases] = useState('');
+  const [localServices, setLocalServices] = useState('');
+
+  const openContactModal = (r: any) => {
+    // Map raw scraped lead to Business interface temporarily
+    const b: Business = {
+        id: r.place_id || Math.random().toString(),
+        name: r.name,
+        address: r.address || city,
+        website: r.website || '',
+        phone: r.phone || '',
+        rating: r.score || 0,
+        reviewCount: r.reviews || 0,
+        category: r.niche || service,
+        contactEmail: r.email || '',
+        status: 'new',
+        qualityScore: r.score || 0
+    };
+    setSelectedContact(b);
+  };
 
   const startPipeline = async () => {
     if (!service || !city) return;
@@ -28,6 +61,13 @@ export default function PipelineSearch() {
         // Output format will be parsed in next phases. Simply log it for now.
         console.log("Scraper returned CSV path:", data.csvFilePath);
         setStatusText(`Complete. Found CSV at ${data.csvFilePath}`);
+        
+        // Mocking results to allow UI interaction
+        setResults([
+            { name: `Example 1 ${service}`, website: 'https://ex1.com', phone: '123-456-7890', email: null, ads: true, score: 35 },
+            { name: `Example 2 ${service}`, website: null, phone: null, email: null, ads: false, score: 0 }
+        ]);
+
     } catch (err: any) {
         setStatusText(`Error: ${err.message}`);
         console.error(err);
@@ -36,8 +76,34 @@ export default function PipelineSearch() {
     }
   };
 
+  // Enrichment Hook Buttons (To be wired)
+  const runFallbackEmailSearch = () => { alert('Triggering Gemini URL Context Search for missing emails...'); };
+  const runSerperAdCheck = () => { alert('Triggering Serper.dev Ads verification...'); };
+  const runWebsiteQualityCheck = () => { alert('Triggering PageSpeed Insights scoring...'); };
+
+  const filteredResults = useMemo(() => {
+    return results.filter(r => {
+        if (filterWebsite === 'has' && !r.website) return false;
+        if (filterWebsite === 'doesnt' && r.website) return false;
+        
+        if (filterAds === 'yes' && !r.ads) return false;
+        if (filterAds === 'no' && r.ads) return false;
+
+        if (filterEmail === 'yes' && !r.email) return false;
+        if (filterEmail === 'no' && r.email) return false;
+        
+        if (filterPhone === 'yes' && !r.phone) return false;
+        if (filterPhone === 'no' && r.phone) return false;
+
+        if (filterScore === 'below50' && r.score >= 50) return false;
+        if (filterScore === 'above50' && r.score < 50) return false;
+
+        return true;
+    });
+  }, [results, filterWebsite, filterAds, filterEmail, filterPhone, filterScore]);
+
   return (
-    <div className="flex-1 overflow-auto bg-slate-50 flex flex-col h-full h-screen">
+    <div className="flex-1 overflow-auto bg-slate-50 flex flex-col h-full h-screen relative">
       <div className="bg-white border-b sticky top-0 z-10 px-6 py-4 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
         <div className="flex items-center gap-3">
           <Database className="text-brand-600" size={24} />
@@ -74,15 +140,15 @@ export default function PipelineSearch() {
             className="bg-brand-600 text-white px-5 py-2 rounded-xl text-sm font-semibold hover:bg-brand-700 disabled:opacity-50 flex items-center gap-2 shadow-sm transition-all shadow-brand-500/20 active:scale-95"
           >
             {isScraping ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
-            {isScraping ? 'Running...' : 'Start Scan'}
+            {isScraping ? 'Running...' : 'Fetch Base Pipeline Data'}
           </button>
         </div>
       </div>
 
       <div className="p-6 flex-1 flex flex-col max-w-[1600px] mx-auto w-full">
         {/* Status Bar */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-6 flex justify-between items-center">
-            <div className="flex items-center gap-3 text-sm font-medium">
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-6 flex justify-between items-center flex-wrap gap-4">
+            <div className="flex items-center gap-3 text-sm font-medium w-full md:w-auto">
                 <span className="relative flex h-3 w-3">
                   {isScraping && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>}
                   <span className={`relative inline-flex rounded-full h-3 w-3 ${isScraping ? 'bg-brand-500' : 'bg-slate-300'}`}></span>
@@ -90,18 +156,53 @@ export default function PipelineSearch() {
                 <span className="text-slate-600">{statusText}</span>
             </div>
             
-            {/* Action Bar */}
+            {/* Action Bar - Manual Triggers exactly tailored to user requests */}
             <div className="flex gap-2">
-                <button className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors">
-                    <Activity size={14}/> Score Check
+                <button onClick={runWebsiteQualityCheck} className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors">
+                    <Activity size={14}/> Website Quality & Score (PageSpeed)
                 </button>
-                <button className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors">
-                    <Mail size={14}/> Gemini Email
+                <button onClick={runSerperAdCheck} className="px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors">
+                    <ExternalLink size={14}/> Check Google Ads (Serper)
                 </button>
-                <button className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors">
-                    <Filter size={14}/> Layout Filters
+                <button onClick={runFallbackEmailSearch} className="px-3 py-1.5 bg-brand-50 text-brand-700 hover:bg-brand-100 border border-brand-200 text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors">
+                    <Mail size={14}/> Fallback Email Search (Gemini Context)
                 </button>
             </div>
+        </div>
+
+        {/* Filter Bar */}
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-6 flex flex-wrap gap-4 items-center">
+            <div className="text-sm font-semibold text-slate-800 flex items-center gap-2"><Filter size={16}/> Layout Filters:</div>
+            
+            <select className="text-sm border rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-brand-500" value={filterWebsite} onChange={e=>setFilterWebsite(e.target.value as any)}>
+                <option value="both">Website: Both</option>
+                <option value="has">Has Website</option>
+                <option value="doesnt">No Website</option>
+            </select>
+            
+            <select className="text-sm border rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-brand-500" value={filterAds} onChange={e=>setFilterAds(e.target.value as any)}>
+                <option value="both">Ads: Both</option>
+                <option value="yes">Runs Ads</option>
+                <option value="no">No Ads</option>
+            </select>
+            
+            <select className="text-sm border rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-brand-500" value={filterEmail} onChange={e=>setFilterEmail(e.target.value as any)}>
+                <option value="both">Email: Both</option>
+                <option value="yes">Has Email</option>
+                <option value="no">No Email</option>
+            </select>
+            
+            <select className="text-sm border rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-brand-500" value={filterPhone} onChange={e=>setFilterPhone(e.target.value as any)}>
+                <option value="both">Phone: Both</option>
+                <option value="yes">Has Phone</option>
+                <option value="no">No Phone</option>
+            </select>
+            
+            <select className="text-sm border rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-brand-500" value={filterScore} onChange={e=>setFilterScore(e.target.value as any)}>
+                <option value="both">Score: Both</option>
+                <option value="below50">Quality Score Below 50</option>
+                <option value="above50">Quality Score Above 50</option>
+            </select>
         </div>
 
         {/* Data Grid */}
@@ -119,16 +220,19 @@ export default function PipelineSearch() {
                 </tr>
               </thead>
               <tbody>
-                {results.length === 0 ? (
+                {filteredResults.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
-                      No results yet. Enter a niche and city to start sniping.
+                      No matching results found in pipeline.
                     </td>
                   </tr>
                 ) : (
-                  results.map((r, i) => (
-                    <tr key={i} className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer transition-colors">
-                      <td className="px-4 py-3 font-semibold text-slate-800">{r.name}</td>
+                  filteredResults.map((r, i) => (
+                    <tr key={i} onClick={() => openContactModal(r)} className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer transition-colors">
+                      <td className="px-4 py-3 font-semibold text-slate-800 flex items-center gap-2">
+                        {r.name}
+                        <span className="bg-slate-100 text-slate-500 text-[9px] px-2 py-0.5 rounded-full border border-slate-200 hover:bg-brand-50 hover:border-brand-300 hover:text-brand-700">Open Generator</span>
+                      </td>
                       <td className="px-4 py-3 font-mono text-xs">{r.phone || 'N/A'}</td>
                       <td className="px-4 py-3">
                         {r.website ? (
@@ -162,6 +266,144 @@ export default function PipelineSearch() {
           </div>
         </div>
       </div>
+
+      {/* Website Generator Modal (Duplicated for Seamless Pipeline UX) */}
+      {selectedContact && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 animate-fade-in p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-full">
+                <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                    <div>
+                        <h2 className="text-xl font-bold tracking-tight text-slate-800">{selectedContact.name}</h2>
+                        <p className="text-sm text-slate-500">Pipeline Website Generator Workspace</p>
+                    </div>
+                    <button onClick={() => setSelectedContact(null)} className="text-slate-400 hover:bg-slate-200 hover:text-slate-800 p-2 rounded-full transition-colors">
+                        <X size={20} />
+                    </button>
+                </div>
+                
+                <div className="p-6 overflow-y-auto w-full">
+                    <div className="space-y-6 flex flex-col items-center justify-center">
+                        <div className="w-full space-y-4 mb-4">
+                            <h4 className="font-bold text-slate-800 border-b pb-2">Theme Customization Settings</h4>
+                            
+                            <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Website Template</label>
+                            <select 
+                                className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500"
+                                value={selectedContact.themeTemplate || 'med-spa-template-1'}
+                                onChange={(e) => setSelectedContact({...selectedContact, themeTemplate: e.target.value})}
+                            >
+                                <option value="med-spa-template-1">Med Spa Theme (Default)</option>
+                                <option value="plumber-template-1">Plumbing Theme</option>
+                                <option value="generic-business-1">Generic Local Business</option>
+                            </select>
+                            </div>
+
+                            <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Brand Tagline</label>
+                            <input 
+                                className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500"
+                                placeholder="e.g., The best plumbing in town"
+                                value={selectedContact.themeTagline || ''}
+                                onChange={(e) => setSelectedContact({...selectedContact, themeTagline: e.target.value})}
+                            />
+                            </div>
+
+                            <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Hero Phrases (Comma Separated)</label>
+                            <input 
+                                className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500"
+                                placeholder="e.g., Fast, Reliable, Affordable"
+                                value={localHeroPhrases}
+                                onChange={(e) => {
+                                setLocalHeroPhrases(e.target.value);
+                                setSelectedContact({...selectedContact, themeHeroPhrases: e.target.value.split(',').map(s=>s.trim()).filter(Boolean)});
+                                }}
+                            />
+                            </div>
+
+                            <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Services Offered (Comma Separated)</label>
+                            <input 
+                                className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500"
+                                placeholder="e.g., HVAC Repair, AC Installation, Heating"
+                                value={localServices}
+                                onChange={(e) => {
+                                setLocalServices(e.target.value);
+                                setSelectedContact({...selectedContact, themeServices: e.target.value.split(',').map(s=>s.trim()).filter(Boolean)});
+                                }}
+                            />
+                            </div>
+                        </div>
+
+                        {!selectedContact.previewSiteUrl ? (
+                            <>
+                            <div className="w-16 h-16 bg-brand-100 rounded-full flex items-center justify-center text-brand-600 mb-4">
+                                <ExternalLink size={32} />
+                            </div>
+                            <h3 className="text-lg font-bold text-slate-800">Generate Preview Website</h3>
+                            <p className="text-slate-500 text-center max-w-sm mb-6">
+                                Create a custom, high-speed landing page for {selectedContact.name} to showcase in your cold outreach pipeline.
+                            </p>
+                            <button
+                                onClick={async () => {
+                                setIsModalActionLoading(true);
+                                try {
+                                    const result = await generateWebsite(selectedContact);
+                                    setSelectedContact({ ...selectedContact, previewSiteUrl: result.previewUrl });
+                                } catch (e: any) { alert('Site generation failed: ' + e.message); }
+                                finally { setIsModalActionLoading(false); }
+                                }}
+                                disabled={isModalActionLoading}
+                                className="bg-brand-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-brand-200 hover:bg-brand-700 hover:shadow-xl transition-all flex items-center gap-2"
+                            >
+                                {isModalActionLoading ? <RefreshCw className="animate-spin" size={20} /> : <Smartphone size={20} />}
+                                {isModalActionLoading ? 'Building Site...' : 'Generate Preview Site'}
+                            </button>
+                            </>
+                        ) : (
+                            <div className="w-full space-y-4">
+                            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 flex items-center gap-3">
+                                <div className="bg-emerald-100 p-2 rounded-full text-emerald-600"><Check size={20} /></div>
+                                <div className="flex-1">
+                                <h4 className="font-bold text-emerald-800">Website Generated!</h4>
+                                <p className="text-emerald-700 text-sm">Ready to share via the email pipeline.</p>
+                                </div>
+                            </div>
+
+                            <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Preview URL</label>
+                                <div className="flex gap-2">
+                                <input readOnly value={selectedContact.previewSiteUrl} className="flex-1 bg-white border border-slate-300 rounded px-3 py-2 text-sm text-slate-700 outline-none" />
+                                <a href={selectedContact.previewSiteUrl} target="_blank" rel="noreferrer" className="bg-slate-900 text-white px-4 py-2 rounded font-medium text-sm hover:bg-slate-800 flex items-center">
+                                    Open <ExternalLink size={14} className="ml-2" />
+                                </a>
+                                </div>
+                            </div>
+                            
+                            <div className="flex justify-center pt-2">
+                                <button
+                                onClick={async () => {
+                                    setIsModalActionLoading(true);
+                                    try {
+                                    const result = await generateWebsite(selectedContact);
+                                    setSelectedContact({ ...selectedContact, previewSiteUrl: result.previewUrl });
+                                    } catch (e: any) { alert('Site regeneration failed: ' + e.message); }
+                                    finally { setIsModalActionLoading(false); }
+                                }}
+                                disabled={isModalActionLoading}
+                                className="flex items-center gap-2 text-slate-500 hover:text-slate-700 text-sm font-medium"
+                                >
+                                <RefreshCw size={14} className={isModalActionLoading ? "animate-spin" : ""} /> Regenerate Website
+                                </button>
+                            </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
     </div>
   );
 }

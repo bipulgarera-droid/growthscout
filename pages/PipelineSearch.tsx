@@ -1,15 +1,18 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Loader2, Play, Building2, MapPin, Database, Filter, ExternalLink, Activity, Mail, Check, RefreshCw, Smartphone, X } from 'lucide-react';
+import { Search, Loader2, Play, Building2, MapPin, Database, Filter, ExternalLink, Activity, Mail, Check, RefreshCw, Smartphone, X, User, Globe, ChevronDown } from 'lucide-react';
 import { Business } from '../types';
-import { generateWebsite } from '../services/backendApi';
+import { generateWebsite, uploadLogo, enrichBusiness } from '../services/backendApi';
 
 export default function PipelineSearch() {
   const [service, setService] = useState('');
   const [city, setCity] = useState('');
-  const [targetCount, setTargetCount] = useState('100'); // New Option
+  const [targetCount, setTargetCount] = useState('100');
   const [isScraping, setIsScraping] = useState(false);
   const [results, setResults] = useState<any[]>([]);
   const [statusText, setStatusText] = useState('Idle');
+
+  // Selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Filters State
   const [filterWebsite, setFilterWebsite] = useState<'both'|'has'|'doesnt'>('both');
@@ -18,17 +21,18 @@ export default function PipelineSearch() {
   const [filterPhone, setFilterPhone] = useState<'both'|'yes'|'no'>('both');
   const [filterScore, setFilterScore] = useState<'both'|'below50'|'above50'>('both');
 
-  // Web Generation Modal State
+  // Modal State
   const [selectedContact, setSelectedContact] = useState<Business | null>(null);
+  const [activeTab, setActiveTab] = useState<'contact' | 'website'>('contact');
   const [isModalActionLoading, setIsModalActionLoading] = useState(false);
   const [localHeroPhrases, setLocalHeroPhrases] = useState('');
   const [localServices, setLocalServices] = useState('');
+  const [logoUploadUrl, setLogoUploadUrl] = useState('');
 
   const openContactModal = (r: any) => {
-    // Map raw scraped lead to Business interface temporarily
     const b: Business = {
         id: r.place_id || Math.random().toString(),
-        name: r.name,
+        name: r.name || 'Unnamed Business',
         address: r.address || city,
         website: r.website || '',
         phone: r.phone || '',
@@ -39,7 +43,25 @@ export default function PipelineSearch() {
         status: 'new',
         qualityScore: r.score || 0
     };
+    setActiveTab('contact');
     setSelectedContact(b);
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredResults.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredResults.map((r: any) => r.place_id || r.name)));
+    }
   };
 
   const startPipeline = () => {
@@ -47,8 +69,8 @@ export default function PipelineSearch() {
     setIsScraping(true);
     setStatusText('Routing directly to background scraper engine...');
     setResults([]);
+    setSelectedIds(new Set());
     
-    // Switch to Server-Sent Events (SSE) to bypass ingress load balancer timeouts
     const evtSource = new EventSource(`/api/pipeline/stream?service=${encodeURIComponent(service)}&city=${encodeURIComponent(city)}&targetCount=${targetCount}`);
 
     evtSource.onmessage = (event) => {
@@ -60,7 +82,7 @@ export default function PipelineSearch() {
                 const resultData = data.result;
                 if (resultData.records && resultData.records.length > 0) {
                     setResults(resultData.records);
-                    setStatusText(`Complete. Found CSV at ${resultData.csvFilePath}. Loaded ${resultData.records.length} businesses.`);
+                    setStatusText(`Complete. Loaded ${resultData.records.length} businesses.`);
                 } else {
                     setStatusText(`Complete. No valid records found in resulting CSV.`);
                 }
@@ -72,7 +94,7 @@ export default function PipelineSearch() {
                 setIsScraping(false);
             }
         } catch (e) {
-            // Ignore ping frames or malformed text
+            // Ignore ping frames
         }
     };
 
@@ -176,7 +198,6 @@ export default function PipelineSearch() {
                 <span className="text-slate-600">{statusText}</span>
             </div>
             
-            {/* Action Bar - Manual Triggers exactly tailored to user requests */}
             <div className="flex gap-2">
                 <button onClick={runWebsiteQualityCheck} className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 text-xs font-semibold rounded-lg flex items-center gap-2 transition-colors">
                     <Activity size={14}/> Website Quality & Score (PageSpeed)
@@ -191,38 +212,48 @@ export default function PipelineSearch() {
         </div>
 
         {/* Filter Bar */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-6 flex flex-wrap gap-4 items-center">
-            <div className="text-sm font-semibold text-slate-800 flex items-center gap-2"><Filter size={16}/> Layout Filters:</div>
-            
-            <select className="text-sm border rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-brand-500" value={filterWebsite} onChange={e=>setFilterWebsite(e.target.value as any)}>
-                <option value="both">Website: Both</option>
-                <option value="has">Has Website</option>
-                <option value="doesnt">No Website</option>
-            </select>
-            
-            <select className="text-sm border rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-brand-500" value={filterAds} onChange={e=>setFilterAds(e.target.value as any)}>
-                <option value="both">Ads: Both</option>
-                <option value="yes">Runs Ads</option>
-                <option value="no">No Ads</option>
-            </select>
-            
-            <select className="text-sm border rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-brand-500" value={filterEmail} onChange={e=>setFilterEmail(e.target.value as any)}>
-                <option value="both">Email: Both</option>
-                <option value="yes">Has Email</option>
-                <option value="no">No Email</option>
-            </select>
-            
-            <select className="text-sm border rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-brand-500" value={filterPhone} onChange={e=>setFilterPhone(e.target.value as any)}>
-                <option value="both">Phone: Both</option>
-                <option value="yes">Has Phone</option>
-                <option value="no">No Phone</option>
-            </select>
-            
-            <select className="text-sm border rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-brand-500" value={filterScore} onChange={e=>setFilterScore(e.target.value as any)}>
-                <option value="both">Score: Both</option>
-                <option value="below50">Quality Score Below 50</option>
-                <option value="above50">Quality Score Above 50</option>
-            </select>
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-6 flex flex-wrap gap-4 items-center justify-between">
+            <div className="flex flex-wrap gap-4 items-center">
+              <div className="text-sm font-semibold text-slate-800 flex items-center gap-2"><Filter size={16}/> Layout Filters:</div>
+              
+              <select className="text-sm border rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-brand-500" value={filterWebsite} onChange={e=>setFilterWebsite(e.target.value as any)}>
+                  <option value="both">Website: Both</option>
+                  <option value="has">Has Website</option>
+                  <option value="doesnt">No Website</option>
+              </select>
+              
+              <select className="text-sm border rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-brand-500" value={filterAds} onChange={e=>setFilterAds(e.target.value as any)}>
+                  <option value="both">Ads: Both</option>
+                  <option value="yes">Runs Ads</option>
+                  <option value="no">No Ads</option>
+              </select>
+              
+              <select className="text-sm border rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-brand-500" value={filterEmail} onChange={e=>setFilterEmail(e.target.value as any)}>
+                  <option value="both">Email: Both</option>
+                  <option value="yes">Has Email</option>
+                  <option value="no">No Email</option>
+              </select>
+              
+              <select className="text-sm border rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-brand-500" value={filterPhone} onChange={e=>setFilterPhone(e.target.value as any)}>
+                  <option value="both">Phone: Both</option>
+                  <option value="yes">Has Phone</option>
+                  <option value="no">No Phone</option>
+              </select>
+              
+              <select className="text-sm border rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-brand-500" value={filterScore} onChange={e=>setFilterScore(e.target.value as any)}>
+                  <option value="both">Score: Both</option>
+                  <option value="below50">Quality Score Below 50</option>
+                  <option value="above50">Quality Score Above 50</option>
+              </select>
+            </div>
+
+            {/* Result Count */}
+            {results.length > 0 && (
+              <div className="text-sm font-semibold text-slate-600">
+                Showing <span className="text-brand-600">{filteredResults.length}</span> of <span className="text-brand-600">{results.length}</span> businesses
+                {selectedIds.size > 0 && <span className="ml-2 text-emerald-600">({selectedIds.size} selected)</span>}
+              </div>
+            )}
         </div>
 
         {/* Data Grid */}
@@ -231,6 +262,14 @@ export default function PipelineSearch() {
             <table className="w-full text-left text-sm text-slate-600">
               <thead className="text-xs text-slate-500 bg-slate-50 uppercase font-semibold border-b border-slate-100">
                 <tr>
+                  <th className="px-4 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      checked={filteredResults.length > 0 && selectedIds.size === filteredResults.length}
+                      onChange={toggleSelectAll}
+                      className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
+                    />
+                  </th>
                   <th className="px-4 py-3">Business Name</th>
                   <th className="px-4 py-3">Phone</th>
                   <th className="px-4 py-3">Website</th>
@@ -242,19 +281,36 @@ export default function PipelineSearch() {
               <tbody>
                 {filteredResults.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
+                    <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
                       No matching results found in pipeline.
                     </td>
                   </tr>
                 ) : (
-                  filteredResults.map((r, i) => (
-                    <tr key={i} onClick={() => openContactModal(r)} className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer transition-colors">
-                      <td className="px-4 py-3 font-semibold text-slate-800 flex items-center gap-2">
-                        {r.name}
-                        <span className="bg-slate-100 text-slate-500 text-[9px] px-2 py-0.5 rounded-full border border-slate-200 hover:bg-brand-50 hover:border-brand-300 hover:text-brand-700">Open Generator</span>
+                  filteredResults.map((r: any, i: number) => {
+                    const rowId = r.place_id || r.name || i.toString();
+                    return (
+                    <tr key={i} className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer transition-colors">
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(rowId)}
+                          onChange={() => toggleSelect(rowId)}
+                          className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
+                        />
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs">{r.phone || 'N/A'}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 font-semibold text-slate-800" onClick={() => openContactModal(r)}>
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center text-brand-600 font-bold text-xs shrink-0">
+                            {(r.name || '?').charAt(0)}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate max-w-[220px] font-semibold">{r.name || 'Unnamed Business'}</div>
+                            {r.niche && <div className="text-[10px] text-slate-400 truncate max-w-[220px]">{r.niche}</div>}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs" onClick={() => openContactModal(r)}>{r.phone || 'N/A'}</td>
+                      <td className="px-4 py-3" onClick={() => openContactModal(r)}>
                         {r.website ? (
                             <a href={r.website} target="_blank" className="text-brand-600 hover:underline flex items-center gap-1" onClick={e=>e.stopPropagation()}>
                                 Link <ExternalLink size={12}/>
@@ -263,23 +319,29 @@ export default function PipelineSearch() {
                             <span className="px-2 py-1 bg-rose-100 text-rose-700 text-[10px] font-bold uppercase rounded-md">No Website</span>
                         )}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3" onClick={() => openContactModal(r)}>
                         {r.email ? (
                             <span className="text-emerald-700">{r.email}</span>
                         ) : (
                             <span className="text-amber-600 italic text-xs">Missing</span>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        {r.ads ? <span className="text-emerald-600 font-bold">Yes</span> : <span className="text-slate-400">No</span>}
+                      <td className="px-4 py-3" onClick={() => openContactModal(r)}>
+                        {r.ads === true ? (
+                          <span className="text-emerald-600 font-bold">Yes</span>
+                        ) : r.ads === false && r.adsChecked ? (
+                          <span className="text-slate-400">No</span>
+                        ) : (
+                          <span className="text-slate-300 italic text-xs">Not checked</span>
+                        )}
                       </td>
-                      <td className="px-4 py-3">
-                        {r.score === 0 ? <span className="text-slate-300">-</span> : (
+                      <td className="px-4 py-3" onClick={() => openContactModal(r)}>
+                        {r.score === 0 || !r.score ? <span className="text-slate-300">-</span> : (
                             <span className={`font-bold ${r.score < 50 ? 'text-rose-600' : 'text-emerald-600'}`}>{r.score}</span>
                         )}
                       </td>
                     </tr>
-                  ))
+                  )})
                 )}
               </tbody>
             </table>
@@ -287,21 +349,227 @@ export default function PipelineSearch() {
         </div>
       </div>
 
-      {/* Website Generator Modal (Duplicated for Seamless Pipeline UX) */}
+      {/* Full Profile Modal — Identical to Sniper */}
       {selectedContact && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 animate-fade-in p-4 backdrop-blur-sm">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-full">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                {/* Header */}
                 <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                     <div>
                         <h2 className="text-xl font-bold tracking-tight text-slate-800">{selectedContact.name}</h2>
-                        <p className="text-sm text-slate-500">Pipeline Website Generator Workspace</p>
+                        <p className="text-sm text-slate-500">{selectedContact.category || 'Local Business'} · {selectedContact.address}</p>
                     </div>
                     <button onClick={() => setSelectedContact(null)} className="text-slate-400 hover:bg-slate-200 hover:text-slate-800 p-2 rounded-full transition-colors">
                         <X size={20} />
                     </button>
                 </div>
+
+                {/* Tabs */}
+                <div className="flex border-b border-slate-100">
+                  <button
+                    onClick={() => setActiveTab('contact')}
+                    className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'contact' ? 'border-brand-600 text-brand-600 bg-brand-50/50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                  >
+                    Contact Info
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('website')}
+                    className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'website' ? 'border-brand-600 text-brand-600 bg-brand-50/50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                  >
+                    Create Website
+                  </button>
+                </div>
                 
                 <div className="p-6 overflow-y-auto w-full">
+                  {/* ===== CONTACT INFO TAB ===== */}
+                  {activeTab === 'contact' && (
+                    <div className="space-y-6">
+                      <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 bg-brand-100 rounded-full flex items-center justify-center text-brand-600 font-bold text-2xl shrink-0">
+                          {selectedContact.name.charAt(0)}
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-lg text-slate-900 leading-tight">Business Details</h4>
+                          <p className="text-slate-500 text-sm mt-1">Found through Google Maps</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                          <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Founder</label>
+                          <div className="flex items-center gap-2">
+                            <User size={16} className="text-slate-400" />
+                            <span className="font-medium text-slate-900">{(selectedContact as any).founderName || "Not detected"}</span>
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                          <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Email</label>
+                          <div className="flex items-center gap-2">
+                            <Mail size={16} className="text-slate-400" />
+                            <span className="font-medium text-slate-900">{selectedContact.contactEmail || "Not available"}</span>
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                          <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Phone</label>
+                          <div className="flex items-center gap-2">
+                            <Smartphone size={16} className="text-green-600" />
+                            {selectedContact.phone ? (
+                              <a
+                                href={`https://wa.me/${(() => {
+                                  const cleaned = selectedContact.phone.replace(/[^\d]/g, '');
+                                  return cleaned.length === 10 ? `1${cleaned}` : cleaned;
+                                })()}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-medium text-green-700 hover:text-green-800 hover:underline truncate"
+                                title="Message on WhatsApp"
+                              >
+                                {selectedContact.phone}
+                              </a>
+                            ) : (
+                              <span className="text-slate-400 italic">Not available</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                          <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Reviews</label>
+                          <div className="flex items-center gap-2">
+                            <Activity size={16} className="text-amber-500" />
+                            <span className="font-medium text-slate-900">{selectedContact.reviewCount || 0} reviews · {selectedContact.rating || 0}★</span>
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                          <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Category</label>
+                          <div className="flex items-center gap-2">
+                            <Building2 size={16} className="text-slate-400" />
+                            <span className="font-medium text-slate-900">{selectedContact.category || "Not detected"}</span>
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                          <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Website</label>
+                          <div className="flex items-center gap-2">
+                            <Globe size={16} className="text-emerald-600" />
+                            {selectedContact.website ? (
+                              <a href={selectedContact.website} target="_blank" rel="noreferrer" className="font-medium text-emerald-600 hover:underline truncate max-w-[200px]">
+                                Visit Site
+                              </a>
+                            ) : <span className="text-slate-400 italic">Not available</span>}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Logo Configuration */}
+                      <div className="p-4 bg-slate-50 rounded-lg border border-slate-100">
+                          <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Logo Configuration</label>
+                          <div className="flex flex-col gap-3">
+                             <div className="flex gap-2 items-center">
+                               <input 
+                                 type="file" 
+                                 accept="image/*"
+                                 title="Upload an image from your computer"
+                                 className="text-sm w-full text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100 bg-white border border-dashed border-slate-300 p-2 rounded-xl cursor-pointer"
+                                 onChange={async (e) => {
+                                   const file = e.target.files?.[0];
+                                   if (!file) return;
+                                   const reader = new FileReader();
+                                   reader.onloadend = async () => {
+                                     const base64data = reader.result as string;
+                                     setIsModalActionLoading(true);
+                                     try {
+                                       const res = await uploadLogo(selectedContact.id, { logoData: base64data });
+                                       setSelectedContact(prev => prev ? {...prev, logoUrl: res.logoUrl} : null);
+                                     } catch (err: any) {
+                                       alert('Logo upload failed: ' + err.message);
+                                     } finally {
+                                       setIsModalActionLoading(false);
+                                     }
+                                   };
+                                   reader.readAsDataURL(file);
+                                 }}
+                               />
+                             </div>
+                             
+                             <div className="flex items-center gap-2">
+                               <div className="h-px bg-slate-200 flex-1"></div>
+                               <span className="text-xs font-bold text-slate-400 uppercase">Or link</span>
+                               <div className="h-px bg-slate-200 flex-1"></div>
+                             </div>
+
+                             <div className="flex gap-2">
+                               <input 
+                                 type="text" 
+                                 placeholder={selectedContact.logoUrl ? "Update logo URL..." : "Paste remote image URL for logo"} 
+                                 className="flex-1 px-3 py-2 border rounded-lg text-sm bg-white"
+                                 value={logoUploadUrl}
+                                 onChange={(e) => setLogoUploadUrl(e.target.value)}
+                               />
+                               <button 
+                                 className="bg-brand-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-brand-700 disabled:opacity-50"
+                                 onClick={async () => {
+                                   if(!logoUploadUrl) return;
+                                   setIsModalActionLoading(true);
+                                   try {
+                                     const res = await uploadLogo(selectedContact.id, { logoUrl: logoUploadUrl });
+                                     setSelectedContact(prev => prev ? {...prev, logoUrl: res.logoUrl} : null);
+                                     setLogoUploadUrl('');
+                                   } catch (err: any) {
+                                     alert('Logo upload failed: ' + err.message);
+                                   } finally {
+                                     setIsModalActionLoading(false);
+                                   }
+                                 }}
+                                 disabled={isModalActionLoading || !logoUploadUrl}
+                               >
+                                 {isModalActionLoading ? 'Saving...' : 'Set Logo'}
+                               </button>
+                             </div>
+                          </div>
+                          {selectedContact.logoUrl && (
+                            <div className="mt-3 flex items-center gap-3">
+                               <span className="text-xs text-slate-500">Current Logo:</span>
+                               <img src={selectedContact.logoUrl} alt="Logo" className="max-h-8 object-contain rounded bg-white shadow-sm p-1" />
+                            </div>
+                          )}
+                      </div>
+
+                      {/* Enrich Contact Data Button */}
+                      <button
+                        onClick={async () => {
+                          if (!selectedContact) return;
+                          setIsModalActionLoading(true);
+                          try {
+                            const data = await enrichBusiness(selectedContact.name, selectedContact.address, selectedContact.website);
+                            const updated = {
+                              ...selectedContact,
+                              contactEmail: data.email || selectedContact.contactEmail,
+                              phone: data.phone || selectedContact.phone,
+                              founderName: data.owner || (selectedContact as any).founderName,
+                              linkedin: data.linkedin || (selectedContact as any).linkedin,
+                              instagram: data.instagram || (selectedContact as any).instagram,
+                            };
+                            setSelectedContact(updated as any);
+                          } catch (err: any) {
+                            alert('Enrichment failed: ' + err.message);
+                          } finally {
+                            setIsModalActionLoading(false);
+                          }
+                        }}
+                        disabled={isModalActionLoading}
+                        className="w-full bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:shadow-xl transition-all flex items-center justify-center gap-2"
+                      >
+                        {isModalActionLoading ? <RefreshCw className="animate-spin" size={18} /> : <Activity size={18} />}
+                        {isModalActionLoading ? 'Enriching...' : 'Enrich Contact Data'}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* ===== CREATE WEBSITE TAB ===== */}
+                  {activeTab === 'website' && (
                     <div className="space-y-6 flex flex-col items-center justify-center">
                         <div className="w-full space-y-4 mb-4">
                             <h4 className="font-bold text-slate-800 border-b pb-2">Theme Customization Settings</h4>
@@ -310,8 +578,8 @@ export default function PipelineSearch() {
                             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Website Template</label>
                             <select 
                                 className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500"
-                                value={selectedContact.themeTemplate || 'med-spa-template-1'}
-                                onChange={(e) => setSelectedContact({...selectedContact, themeTemplate: e.target.value})}
+                                value={(selectedContact as any).themeTemplate || 'med-spa-template-1'}
+                                onChange={(e) => setSelectedContact({...selectedContact, themeTemplate: e.target.value} as any)}
                             >
                                 <option value="med-spa-template-1">Med Spa Theme (Default)</option>
                                 <option value="plumber-template-1">Plumbing Theme</option>
@@ -324,8 +592,8 @@ export default function PipelineSearch() {
                             <input 
                                 className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-brand-500"
                                 placeholder="e.g., The best plumbing in town"
-                                value={selectedContact.themeTagline || ''}
-                                onChange={(e) => setSelectedContact({...selectedContact, themeTagline: e.target.value})}
+                                value={(selectedContact as any).themeTagline || ''}
+                                onChange={(e) => setSelectedContact({...selectedContact, themeTagline: e.target.value} as any)}
                             />
                             </div>
 
@@ -337,7 +605,7 @@ export default function PipelineSearch() {
                                 value={localHeroPhrases}
                                 onChange={(e) => {
                                 setLocalHeroPhrases(e.target.value);
-                                setSelectedContact({...selectedContact, themeHeroPhrases: e.target.value.split(',').map(s=>s.trim()).filter(Boolean)});
+                                setSelectedContact({...selectedContact, themeHeroPhrases: e.target.value.split(',').map(s=>s.trim()).filter(Boolean)} as any);
                                 }}
                             />
                             </div>
@@ -350,13 +618,13 @@ export default function PipelineSearch() {
                                 value={localServices}
                                 onChange={(e) => {
                                 setLocalServices(e.target.value);
-                                setSelectedContact({...selectedContact, themeServices: e.target.value.split(',').map(s=>s.trim()).filter(Boolean)});
+                                setSelectedContact({...selectedContact, themeServices: e.target.value.split(',').map(s=>s.trim()).filter(Boolean)} as any);
                                 }}
                             />
                             </div>
                         </div>
 
-                        {!selectedContact.previewSiteUrl ? (
+                        {!(selectedContact as any).previewSiteUrl ? (
                             <>
                             <div className="w-16 h-16 bg-brand-100 rounded-full flex items-center justify-center text-brand-600 mb-4">
                                 <ExternalLink size={32} />
@@ -370,7 +638,7 @@ export default function PipelineSearch() {
                                 setIsModalActionLoading(true);
                                 try {
                                     const result = await generateWebsite(selectedContact);
-                                    setSelectedContact({ ...selectedContact, previewSiteUrl: result.previewUrl });
+                                    setSelectedContact({ ...selectedContact, previewSiteUrl: result.previewUrl } as any);
                                 } catch (e: any) { alert('Site generation failed: ' + e.message); }
                                 finally { setIsModalActionLoading(false); }
                                 }}
@@ -394,8 +662,8 @@ export default function PipelineSearch() {
                             <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Preview URL</label>
                                 <div className="flex gap-2">
-                                <input readOnly value={selectedContact.previewSiteUrl} className="flex-1 bg-white border border-slate-300 rounded px-3 py-2 text-sm text-slate-700 outline-none" />
-                                <a href={selectedContact.previewSiteUrl} target="_blank" rel="noreferrer" className="bg-slate-900 text-white px-4 py-2 rounded font-medium text-sm hover:bg-slate-800 flex items-center">
+                                <input readOnly value={(selectedContact as any).previewSiteUrl} className="flex-1 bg-white border border-slate-300 rounded px-3 py-2 text-sm text-slate-700 outline-none" />
+                                <a href={(selectedContact as any).previewSiteUrl} target="_blank" rel="noreferrer" className="bg-slate-900 text-white px-4 py-2 rounded font-medium text-sm hover:bg-slate-800 flex items-center">
                                     Open <ExternalLink size={14} className="ml-2" />
                                 </a>
                                 </div>
@@ -407,7 +675,7 @@ export default function PipelineSearch() {
                                     setIsModalActionLoading(true);
                                     try {
                                     const result = await generateWebsite(selectedContact);
-                                    setSelectedContact({ ...selectedContact, previewSiteUrl: result.previewUrl });
+                                    setSelectedContact({ ...selectedContact, previewSiteUrl: result.previewUrl } as any);
                                     } catch (e: any) { alert('Site regeneration failed: ' + e.message); }
                                     finally { setIsModalActionLoading(false); }
                                 }}
@@ -420,6 +688,7 @@ export default function PipelineSearch() {
                             </div>
                         )}
                     </div>
+                  )}
                 </div>
             </div>
         </div>

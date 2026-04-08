@@ -11,9 +11,9 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
   const [results, setResults] = useState<any[]>(initialResults);
   const [statusText, setStatusText] = useState('Idle');
 
-  // Sync with global changes when pipeline modal is closed
+  // Sync with global state (project switch, data reload)
   React.useEffect(() => {
-    if (!isScraping && initialResults.length > 0) {
+    if (!isScraping) {
       setResults(initialResults);
     }
   }, [initialResults, isScraping]);

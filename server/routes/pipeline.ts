@@ -154,54 +154,59 @@ router.post('/api/pipeline/analyze', async (req, res) => {
     }
 });
 
-import { findFounderInfo } from '../services/serper.js';
+import { findFounderInfo, isRunningGoogleAds } from '../services/serper.js';
 import { scrapeContactInfoApify } from '../services/apifyEnrichment.js';
+import { extractEmailGemini } from '../services/analysis.js';
 
-// Bulk enrich handles the 'Check Google Ads' and 'Fallback Email Search' buttons
-router.post('/api/pipeline/enrich', async (req, res) => {
+// Specific endpoint: Trigger Google Ads check
+router.post('/api/pipeline/check-ads', async (req, res) => {
     try {
         const { leads } = req.body;
         if (!leads || !Array.isArray(leads)) {
             return res.status(400).json({ error: 'leads array required' });
         }
 
-        const results: Record<string, any> = {};
+        const results: Record<string, boolean> = {};
         for (const lead of leads) {
             try {
-                // Mimicking tools.ts enrich endpoint
-                const serperData = await findFounderInfo(lead.name, lead.address);
-                const hasEmail = !!serperData.email;
-                let apifyData: any = {};
-                
-                if (!hasEmail) {
-                    apifyData = await scrapeContactInfoApify(lead.name, lead.address, lead.website);
-                }
-
-                const mergeStrings = (str1: string | undefined, str2: string | undefined) => {
-                    const arr = new Set<string>();
-                    if (str1) str1.split(',').forEach(s => arr.add(s.trim()));
-                    if (str2) str2.split(',').forEach(s => arr.add(s.trim()));
-                    if (arr.size === 0) return undefined;
-                    return Array.from(arr).join(', ');
-                };
-
-                results[lead.id] = {
-                    email: mergeStrings(apifyData.email, serperData.email),
-                    phone: mergeStrings(apifyData.phone, serperData.phone),
-                    linkedin: apifyData.linkedin || serperData.linkedin,
-                    instagram: apifyData.instagram || serperData.instagram,
-                    facebook: apifyData.facebook || serperData.facebook,
-                    sources: Array.from(new Set([...(apifyData.sources || []), ...(serperData.sources || [])]))
-                };
+                results[lead.id] = await isRunningGoogleAds(lead.name, lead.city || '');
             } catch (err) {
-                console.error(`Enrich failed for ID ${lead.id}:`, err);
-                results[lead.id] = { error: 'Failed' };
+                console.error(`Check ads failed for ${lead.name}:`, err);
+                results[lead.id] = false;
             }
         }
-
         res.json({ success: true, results });
     } catch (error: any) {
-        console.error('Bulk Enrich Error:', error);
+        console.error('Check Ads Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Specific endpoint: Trigger Gemini Email Fallback
+router.post('/api/pipeline/fallback-email', async (req, res) => {
+    try {
+        const { leads } = req.body;
+        if (!leads || !Array.isArray(leads)) {
+            return res.status(400).json({ error: 'leads array required' });
+        }
+
+        const results: Record<string, string | null> = {};
+        for (const lead of leads) {
+            try {
+                if (!lead.website) {
+                    results[lead.id] = null;
+                    continue;
+                }
+                const email = await extractEmailGemini(lead.website);
+                results[lead.id] = email;
+            } catch (err) {
+                console.error(`Fallback email failed for ${lead.website}:`, err);
+                results[lead.id] = null;
+            }
+        }
+        res.json({ success: true, results });
+    } catch (error: any) {
+        console.error('Fallback Email Error:', error);
         res.status(500).json({ error: error.message });
     }
 });

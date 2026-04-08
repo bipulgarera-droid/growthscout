@@ -372,3 +372,56 @@ export const bulkAnalyze = async (leads: { id: string; url: string; name: string
     }
     return results;
 };
+
+// Fallback logic for Email extraction via Gemini URL Context (from Python logic)
+export const extractEmailGemini = async (websiteUrl: string): Promise<string | null> => {
+    if (!GEMINI_API_KEY) {
+        console.warn("Missing GEMINI_API_KEY for extractEmailGemini");
+        return null;
+    }
+
+    const prompt = `Visit this URL and extract any email address you find on the page or contact page: ${websiteUrl}. Return only the email address, nothing else. If no email found, return NULL.`;
+
+    try {
+        console.log(`[Gemini Fallback] Checking ${websiteUrl}...`);
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [
+                            { text: prompt }
+                        ]
+                    }],
+                    generationConfig: { temperature: 0.1, maxOutputTokens: 50 }
+                })
+            }
+        );
+
+        if (!response.ok) {
+            console.error(`[Gemini Fallback] Failed for ${websiteUrl}: ${response.status}`);
+            return null;
+        }
+
+        const data = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const cleanText = text.trim();
+        
+        if (!cleanText || cleanText === 'NULL' || cleanText === 'null') {
+            return null;
+        }
+        
+        // Final sanity check that it looks somewhat like an email (to prevent weird outputs)
+        if (cleanText.includes('@') && cleanText.includes('.')) {
+            console.log(`[Gemini Fallback] Found email: ${cleanText}`);
+            return cleanText;
+        }
+        
+        return null;
+    } catch (e) {
+        console.error(`[Gemini Fallback] Error on ${websiteUrl}:`, e);
+        return null;
+    }
+};

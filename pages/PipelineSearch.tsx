@@ -146,34 +146,79 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     }
   };
 
-  const handleCheckAdsFallbackEmail = async () => {
+  const handleCheckAds = async () => {
     if (results.length === 0) return;
-    setStatusText('Running bulk Google Ads & Email checks (Serper+Apify)...');
+    setStatusText('Checking Google Ads via Serper...');
     setIsScraping(true);
     try {
-        const payload = results.map(r => ({ id: r.id, name: r.name, address: r.address, website: r.website || '' }));
-        const enrichRes = await bulkEnrich(payload);
+        const payload = results.map(r => ({ id: r.id, name: r.name, city: city || r.address || '' }));
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5010'}/pipeline/check-ads`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ leads: payload })
+        });
+        const data = await response.json();
+        
         const newResults = results.map(r => {
-            if (enrichRes[r.id] && !enrichRes[r.id].error) {
+            if (data.results && data.results[r.id] !== undefined) {
+                // In our current Business type, we might not have 'runningAds' but we can just use status or console log.
+                // Assuming we can append 'runningAds' virtually.
                 return { 
                     ...r, 
-                    contactEmail: enrichRes[r.id].email || r.contactEmail,
-                    phone: enrichRes[r.id].phone || r.phone,
-                    instagram: enrichRes[r.id].instagram || r.instagram,
-                    linkedin: enrichRes[r.id].linkedin || r.linkedin,
+                    runningAds: data.results[r.id] // boolean
                 };
             }
             return r;
         });
         setResults(newResults);
-        setStatusText('Enrichment Complete.');
+        setStatusText('Google Ads check complete.');
     } catch (e: any) {
         console.error(e);
-        setStatusText('Enrichment failed: ' + e.message);
+        setStatusText('Ads check failed: ' + e.message);
     } finally {
         setIsScraping(false);
     }
   };
+
+  const handleFallbackEmail = async () => {
+    if (results.length === 0) return;
+    setStatusText('Running Gemini Fallback Email Search...');
+    setIsScraping(true);
+    try {
+        // Only run for those lacking emails
+        const payload = results.filter(r => !r.contactEmail && !r.email && r.website).map(r => ({ id: r.id, website: r.website }));
+        if (payload.length === 0) {
+            setStatusText('No missing emails with valid websites found.');
+            setIsScraping(false);
+            return;
+        }
+
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5010'}/pipeline/fallback-email`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ leads: payload })
+        });
+        const data = await response.json();
+        
+        const newResults = results.map(r => {
+            if (data.results && data.results[r.id] && data.results[r.id] !== 'NULL') {
+                return { 
+                    ...r, 
+                    contactEmail: data.results[r.id]
+                };
+            }
+            return r;
+        });
+        setResults(newResults);
+        setStatusText('Gemini Email Fallback complete.');
+    } catch (e: any) {
+        console.error(e);
+        setStatusText('Email fallback failed: ' + e.message);
+    } finally {
+        setIsScraping(false);
+    }
+  };
+
 
   const filteredResults = useMemo(() => {
     return results.filter(r => {
@@ -267,10 +312,10 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                 <button onClick={handlePageSpeed} disabled={isScraping || results.length === 0} className="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg border border-blue-200 text-xs font-medium hover:bg-blue-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
                     <Activity size={14} /> Website Quality & Score (PageSpeed)
                 </button>
-                <button onClick={handleCheckAdsFallbackEmail} disabled={isScraping || results.length === 0} className="bg-orange-50 text-orange-600 px-3 py-1.5 rounded-lg border border-orange-200 text-xs font-medium hover:bg-orange-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
+                <button onClick={handleCheckAds} disabled={isScraping || results.length === 0} className="bg-orange-50 text-orange-600 px-3 py-1.5 rounded-lg border border-orange-200 text-xs font-medium hover:bg-orange-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
                     <ExternalLink size={14} /> Check Google Ads (Serper)
                 </button>
-                <button onClick={handleCheckAdsFallbackEmail} disabled={isScraping || results.length === 0} className="bg-cyan-50 text-cyan-600 px-3 py-1.5 rounded-lg border border-cyan-200 text-xs font-medium hover:bg-cyan-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
+                <button onClick={handleFallbackEmail} disabled={isScraping || results.length === 0} className="bg-cyan-50 text-cyan-600 px-3 py-1.5 rounded-lg border border-cyan-200 text-xs font-medium hover:bg-cyan-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
                     <Mail size={14} /> Fallback Email Search (Gemini Context)
                 </button>
             </div>

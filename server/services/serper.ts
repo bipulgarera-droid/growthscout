@@ -358,3 +358,51 @@ export const quickEnrich = async (businessName: string, website?: string): Promi
 
     return info;
 };
+
+// Check if a business is currently running Google Ads
+export const isRunningGoogleAds = async (businessName: string, city: string): Promise<boolean> => {
+    if (!SERPER_API_KEY) {
+        console.warn("Missing SERPER_API_KEY for isRunningGoogleAds");
+        return false;
+    }
+
+    const query = `${businessName} ${city}`.trim();
+    
+    try {
+        const response = await fetch("https://google.serper.dev/search", {
+            method: "POST",
+            headers: {
+                "X-API-KEY": SERPER_API_KEY,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ q: query, num: 10 })
+        });
+        
+        if (!response.ok) {
+            console.error(`[Serper Ads] API failed for ${query}: ${response.status}`);
+            return false;
+        }
+        
+        const data = await response.json();
+        const ads = data.ads || [];
+        
+        if (ads.length === 0) {
+            return false;
+        }
+        
+        const businessDomain = businessName.toLowerCase().replace(/\s+/g, "");
+        
+        for (const ad of ads) {
+            const link = (ad.link || "").toLowerCase();
+            if (link.includes(businessDomain)) {
+                console.log(`[Serper Ads] Match found for ${businessName}: ${link}`);
+                return true;
+            }
+        }
+        
+        return false;
+    } catch (e) {
+        console.error(`[Serper Ads] Error checking ads for ${businessName}:`, e);
+        return false;
+    }
+};

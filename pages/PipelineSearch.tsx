@@ -195,7 +195,11 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     setStatusText('Running Gemini Fallback Email Search...');
     setIsScraping(true);
     try {
-        const payload = results.filter(r => !r.contactEmail && !r.email && r.website).map(r => ({ id: r.id, website: r.website }));
+        const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'lawnlove.com', 'thumbtack.com', 'angi.com'];
+        const payload = results
+            .filter(r => !r.contactEmail && !r.email && r.website)
+            .filter(r => !junkDomains.some(d => r.website?.includes(d)))
+            .map(r => ({ id: r.id, website: r.website }));
         if (payload.length === 0) {
             setStatusText('No missing emails with valid websites found.');
             setIsScraping(false);

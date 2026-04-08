@@ -383,10 +383,18 @@ export const extractEmailGemini = async (websiteUrl: string): Promise<string | n
 
     const prompt = `Visit this URL and extract any email address you find on the page or contact page: ${websiteUrl}. Return only the email address, nothing else. If no email found, return NULL.`;
 
+    // Skip URLs that are social media or directory sites — they won't have business emails
+    const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'lawnlove.com', 'thumbtack.com', 'angi.com', 'homeadvisor.com', 'houzz.com'];
+    if (junkDomains.some(d => websiteUrl.includes(d))) {
+        console.log(`[Gemini Fallback] Skipping directory/social URL: ${websiteUrl}`);
+        return null;
+    }
+
     try {
         console.log(`[Gemini Fallback] Fetching live page: ${websiteUrl}...`);
+        // gemini-2.5-flash-preview supports the url_context tool
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:generateContent?key=${GEMINI_API_KEY}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

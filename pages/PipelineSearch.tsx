@@ -41,39 +41,45 @@ export default function PipelineSearch() {
     setSelectedContact(b);
   };
 
-  const startPipeline = async () => {
+  const startPipeline = () => {
     if (!service || !city) return;
     setIsScraping(true);
-    setStatusText('Generating keyword matrices & running remote scraper...');
+    setStatusText('Routing directly to background scraper engine...');
+    setResults([]);
     
-    try {
-        const response = await fetch(`/api/pipeline/run`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ service, city })
-        });
-        
-        if (!response.ok) throw new Error(await response.text());
-        
-        const data = await response.json();
-        setStatusText('Download complete! Parsing results...');
-        
-        // Output format will be parsed in next phases. Simply log it for now.
-        console.log("Scraper returned CSV path:", data.csvFilePath);
-        setStatusText(`Complete. Found CSV at ${data.csvFilePath}`);
-        
-        // Mocking results to allow UI interaction
-        setResults([
-            { name: `Example 1 ${service}`, website: 'https://ex1.com', phone: '123-456-7890', email: null, ads: true, score: 35 },
-            { name: `Example 2 ${service}`, website: null, phone: null, email: null, ads: false, score: 0 }
-        ]);
+    // Switch to Server-Sent Events (SSE) to bypass ingress load balancer timeouts
+    const evtSource = new EventSource(`/api/pipeline/stream?service=${encodeURIComponent(service)}&city=${encodeURIComponent(city)}`);
 
-    } catch (err: any) {
-        setStatusText(`Error: ${err.message}`);
-        console.error(err);
-    } finally {
+    evtSource.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'log') {
+                setStatusText(`Scraping: ${data.message.substring(0, 70)}...`);
+            } else if (data.type === 'complete') {
+                const resultData = data.result;
+                if (resultData.records && resultData.records.length > 0) {
+                    setResults(resultData.records);
+                    setStatusText(`Complete. Found CSV at ${resultData.csvFilePath}. Loaded ${resultData.records.length} businesses.`);
+                } else {
+                    setStatusText(`Complete. No valid records found in resulting CSV.`);
+                }
+                evtSource.close();
+                setIsScraping(false);
+            } else if (data.type === 'error') {
+                setStatusText(`Error: ${data.message}`);
+                evtSource.close();
+                setIsScraping(false);
+            }
+        } catch (e) {
+            // Ignore ping frames or malformed text
+        }
+    };
+
+    evtSource.onerror = () => {
+        setStatusText('Network disconnected or timed out. Reconnecting...');
+        evtSource.close();
         setIsScraping(false);
-    }
+    };
   };
 
   // Enrichment Hook Buttons (To be wired)

@@ -61,17 +61,39 @@ app.get('/api/health', (req, res) => {
 // ============ PIPELINE SERVICE ============
 import { runScrapingPipeline } from './services/pipeline.js';
 
-app.post('/api/pipeline/run', async (req, res) => {
+app.get('/api/pipeline/stream', async (req, res) => {
+    const service = req.query.service as string;
+    const city = req.query.city as string;
+    
+    if (!service || !city) {
+        res.status(400).json({ error: 'Service and city required.' });
+        return;
+    }
+
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+    });
+
+    // Send headers immediately to bypass first byte proxy timeout
+    res.write(':ok\n\n');
+
+    // Railway standard proxy timeout is usually 100s. A 15-second ping keeps it open indefinitely.
+    const ping = setInterval(() => res.write(':ping\n\n'), 15000); 
+
     try {
-        const { service, city } = req.body;
-        if (!service || !city) return res.status(400).json({ error: 'Service and city required.' });
-        
-        // For now, we will wait for it to finish and return results to the client.
-        // For massive runs, SSE (Server-Sent Events) is better.
-        const result = await runScrapingPipeline(service, city);
-        res.json(result);
+        const result = await runScrapingPipeline(service, city, (chunk) => {
+             res.write(`data: ${JSON.stringify({ type: 'log', message: chunk })}\n\n`);
+        });
+
+        clearInterval(ping);
+        res.write(`data: ${JSON.stringify({ type: 'complete', result })}\n\n`);
+        res.end();
     } catch (err: any) {
-        res.status(500).json({ error: err.message });
+        clearInterval(ping);
+        res.write(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`);
+        res.end();
     }
 });
 

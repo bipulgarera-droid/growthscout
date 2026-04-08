@@ -78,9 +78,69 @@ export async function runScrapingPipeline(service: string, city: string, onData?
             
             // Output is ready in resultsFile
             if (fs.existsSync(resultsFile)) {
-                const csvData = fs.readFileSync(resultsFile, 'utf-8');
-                // We'll parse this on the frontend or backend later.
-                resolve({ success: true, csvFilePath: resultsFile, records: [] });
+                try {
+                    const csvData = fs.readFileSync(resultsFile, 'utf-8');
+                    const lines = csvData.split('\n').filter(l => l.trim().length > 0);
+                    
+                    if (lines.length > 0) {
+                        // gosom Google Maps Scraper output headers:
+                        // place_id,name,link,main_category,categories,rating,reviews,address,website,phone,plus_code,review_url,latitude,longitude,timezone,date,description,emails,phones,linkedin,twitter,facebook,youtube,instagram
+                        
+                        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+                        const records = [];
+                        
+                        // Simple robust CSV parser (handles commas inside quotes)
+                        const parseLine = (line: string) => {
+                            const result = [];
+                            let inQuotes = false;
+                            let currentVal = '';
+                            
+                            for (let i = 0; i < line.length; i++) {
+                                const char = line[i];
+                                if (char === '"') {
+                                    inQuotes = !inQuotes;
+                                } else if (char === ',' && !inQuotes) {
+                                    result.push(currentVal.replace(/^"|"$/g, '').trim());
+                                    currentVal = '';
+                                } else {
+                                    currentVal += char;
+                                }
+                            }
+                            result.push(currentVal.replace(/^"|"$/g, '').trim());
+                            return result;
+                        };
+
+                        for (let i = 1; i < lines.length; i++) {
+                            const values = parseLine(lines[i]);
+                            const record: any = {};
+                            
+                            headers.forEach((h, index) => {
+                                record[h] = values[index];
+                            });
+
+                            // Map GoScraper output to our UI Model
+                            records.push({
+                                place_id: record.place_id,
+                                name: record.name,
+                                phone: record.phone || record.phones,
+                                website: record.website,
+                                email: record.emails ? record.emails.split(',')[0] : null, // Pick first email
+                                ads: false, // Will be checked in later layer
+                                score: 0,   // Will be checked in later layer
+                                address: record.address,
+                                niche: record.main_category,
+                                reviews: parseInt(record.reviews) || 0
+                            });
+                        }
+                        
+                        resolve({ success: true, csvFilePath: resultsFile, records });
+                    } else {
+                        resolve({ success: true, csvFilePath: resultsFile, records: [] });
+                    }
+                } catch (e: any) {
+                    console.error("Failed to parse CSV", e);
+                    resolve({ success: true, csvFilePath: resultsFile, records: [] });
+                }
             } else {
                 reject(new Error("Results file not generated"));
             }

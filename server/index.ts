@@ -58,6 +58,23 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'GrowthScout Backend is running' });
 });
 
+// ============ PIPELINE SERVICE ============
+import { runScrapingPipeline } from './services/pipeline.js';
+
+app.post('/api/pipeline/run', async (req, res) => {
+    try {
+        const { service, city } = req.body;
+        if (!service || !city) return res.status(400).json({ error: 'Service and city required.' });
+        
+        // For now, we will wait for it to finish and return results to the client.
+        // For massive runs, SSE (Server-Sent Events) is better.
+        const result = await runScrapingPipeline(service, city);
+        res.json(result);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ============ SCREENSHOT SERVICE ============
 import { captureScreenshot } from './services/screenshot.js';
 
@@ -224,29 +241,6 @@ app.post('/api/enrich', async (req, res) => {
 
     } catch (error: any) {
         console.error(error);
-        res.status(500).json({ error: error.message });
-    }
-});
-// ============ PIPELINE AUTOMATION ============
-import { runPipeline } from './services/pipeline.js';
-import { getLeads } from './services/persistence.js';
-
-app.post('/api/pipeline/start', async (req, res) => {
-    try {
-        const { keyword, location, maxResults, projectId, templateType } = req.body;
-        if (!keyword) {
-            res.status(400).json({ error: 'Keyword is required' });
-            return;
-        }
-
-        // Run the full pipeline
-        // Note: This might take time, so for large requests we should return a job ID.
-        // For MVP (max 5 leads), we await it.
-        const results = await runPipeline(keyword, location, maxResults || 3, projectId, templateType);
-
-        res.json({ success: true, results });
-    } catch (error: any) {
-        console.error("Pipeline Error:", error);
         res.status(500).json({ error: error.message });
     }
 });

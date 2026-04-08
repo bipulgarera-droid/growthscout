@@ -32,7 +32,8 @@ const Sidebar = () => {
         <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4 px-4">
           Navigation
         </div>
-        <NavItem path="/" icon={Search} label="Prospecting Hub" />
+        <NavItem path="/" icon={Search} label="Manual Sniper" />
+        <NavItem path="/pipeline" icon={Database} label="Mass Pipeline" />
         <NavItem path="/clients" icon={Users} label="Clients Inbox" />
       </nav>
     </div>

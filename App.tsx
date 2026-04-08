@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import BusinessSearch from './pages/BusinessSearch';
+import PipelineSearch from './pages/PipelineSearch';
 import ClientDashboard from './pages/ClientDashboard';
 import Topbar from './components/Topbar';
 import { useProject } from './context/ProjectContext';
@@ -471,6 +472,7 @@ const App = () => {
                    onUpdateClient={updateSearchResult}
                 />
               } />
+              <Route path="/pipeline" element={<PipelineSearch />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </div>

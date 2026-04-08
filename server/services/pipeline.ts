@@ -1,146 +1,94 @@
+import fs from 'fs';
+import path from 'path';
+import { spawn } from 'child_process';
+import { fileURLToPath } from 'url';
 
-import { discoverBusinesses, DiscoveredBusiness } from './apify.js';
-import { findFounderInfo, quickEnrich } from './serper.js';
-import { captureScreenshot } from './screenshot.js';
-import { generateOutreachMessage } from './outreach.js';
-import { saveLead, savePreview, generateSlug } from './persistence.js';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-export interface PipelineResult {
-    business: DiscoveredBusiness;
-    contact: any;
-    slug: string;
-    previewUrl: string;
-    outreachMessage: string;
-    audit: any;
-    status: 'success' | 'error';
-    error?: string;
+// Define path to the downloaded binary
+const BINARY_PATH = path.resolve(__dirname, '../bin/scraper/google_maps_scraper');
+const TEMP_DIR = path.resolve(__dirname, '../.tmp/pipeline');
+
+/**
+ * Generates an automated list of keywords to feed into the scraper.
+ */
+function generateKeywords(service: string, city: string): string[] {
+    // A more advanced engine would fetch actual JSON suburbs for the city.
+    // For now we use cardinal directions and permutations.
+    const modifiers = ['best', 'residential', 'commercial', 'emergency', 'affordable'];
+    const areas = ['North', 'South', 'East', 'West', 'Downtown'];
+    
+    const queries = [];
+    // Base exact queries
+    queries.push(`${service} in ${city}`);
+    queries.push(`${service} contractors ${city}`);
+    
+    // Sub-areas
+    for (const area of areas) {
+        queries.push(`${service} in ${area} ${city}`);
+    }
+
+    // Modifiers
+    for (const mod of modifiers) {
+        queries.push(`${mod} ${service} in ${city}`);
+    }
+
+    return queries;
 }
 
-export const processLead = async (biz: DiscoveredBusiness, projectId?: string, templateType: string = 'medspa'): Promise<PipelineResult> => {
-    try {
-        console.log(`[Pipeline] Processing: ${biz.name}`);
+export async function runScrapingPipeline(service: string, city: string, onData?: (chunk: string) => void) {
+    if (!fs.existsSync(TEMP_DIR)) {
+        fs.mkdirSync(TEMP_DIR, { recursive: true });
+    }
 
-        // A. Enrichment
-        const founderInfo = await findFounderInfo(biz.name, biz.address);
+    const runId = Date.now().toString();
+    const queryFile = path.resolve(TEMP_DIR, `queries_${runId}.txt`);
+    const resultsFile = path.resolve(TEMP_DIR, `results_${runId}.csv`);
 
-        // A.1 Verify WhatsApp (Now handled asynchronously via UI Bulk Checks)
-        let isWhatsAppVerified = false;
+    const queries = generateKeywords(service, city);
+    fs.writeFileSync(queryFile, queries.join('\n'), 'utf-8');
 
-        // B. Audit (Screenshot)
-        let screenshotBase64 = null;
-        let speedScore = 0;
-        if (biz.website) {
-            try {
-                const shot = await captureScreenshot({ url: biz.website, view: 'desktop', waitMs: 2000 });
-                screenshotBase64 = shot.base64Image;
-                // Mock speed score for now (Puppeteer performance API takes extra work)
-                // Random score inversely proportional to load time would be better, but random is okay for MVP
-                speedScore = Math.floor(40 + Math.random() * 50);
-            } catch (e) {
-                console.error(`Screenshot failed for ${biz.website}`, e);
-            }
-        }
+    console.log(`[Pipeline] Staring run ${runId} with ${queries.length} queries targeting ${service} in ${city}`);
 
-        // C. Personalization (Supabase)
-        const slug = biz.website ? generateSlug(biz.website) : generateSlug(biz.name + (biz.address || ''));
-        const TEMPLATE_URLS: Record<string, string> = {
-            medspa: process.env.MEDSPA_TEMPLATE_URL || 'https://medspa-website.vercel.app',
-            fitness: process.env.FITNESS_TEMPLATE_URL || 'https://fitnessformula.vercel.app'
-        };
-        const baseUrl = TEMPLATE_URLS[templateType.toLowerCase()] || TEMPLATE_URLS['medspa'];
-        const previewUrl = `${baseUrl}/preview/${slug}`;
-
-        // Upsert Preview Data
-        await savePreview({
-            slug,
-            business_name: biz.name,
-            contact_info: { ...founderInfo, phone: biz.phone, address: biz.address },
-            logo_url: biz.imageUrl, // Apify often gives a photo or logo
-            website_url: biz.website
+    return new Promise((resolve, reject) => {
+        // google-maps-scraper -input queries.txt -c 1 -depth 10 -email -results output.csv
+        const scraperProcess = spawn(BINARY_PATH, [
+            '-input', queryFile,
+            '-c', '1',
+            '-depth', '10',
+            '-email',
+            '-results', resultsFile
+        ], {
+            cwd: path.dirname(BINARY_PATH)
         });
 
-        // D. Outreach Generation
-        const contactName = founderInfo.founderName || "Owner";
-        const missingFeatures = ["Mobile Responsiveness", "Clear CTA", "Modern Design"]; // Mock analysis results
-        const message = await generateOutreachMessage(
-            biz.name,
-            contactName,
-            biz.website || "",
-            undefined,
-            speedScore,
-            missingFeatures
-        );
+        scraperProcess.stdout.on('data', (data) => {
+            const line = data.toString();
+            console.log(`[Pipeline]`, line);
+            if (onData) onData(line);
+        });
 
-        // E. Save to Leads Table (Persistence)
-        const leadData = {
-            business_name: biz.name,
-            original_url: biz.website,
-            address: biz.address,
-            rating: biz.rating,
-            review_count: biz.reviewCount,
-            contact_info: { ...founderInfo, phone: biz.phone },
-            audit_data: {
-                speed_score: speedScore,
-                screenshot_url: "stored_locally", // We don't save base64 to DB to save space
-                issues: missingFeatures
-            },
-            whatsapp_verified: isWhatsAppVerified,
-            slug,
-            preview_url: previewUrl,
-            outreach_message: message,
-            status: 'processed',
-            project_id: projectId
-        };
+        scraperProcess.stderr.on('data', (data) => {
+            console.error(`[Pipeline ERR]`, data.toString());
+        });
 
+        scraperProcess.on('close', (code) => {
+            console.log(`[Pipeline] Completed run ${runId} with exit code ${code}`);
+            
+            // Output is ready in resultsFile
+            if (fs.existsSync(resultsFile)) {
+                const csvData = fs.readFileSync(resultsFile, 'utf-8');
+                // We'll parse this on the frontend or backend later.
+                resolve({ success: true, csvFilePath: resultsFile, records: [] });
+            } else {
+                reject(new Error("Results file not generated"));
+            }
+        });
 
-        const savedLead = await saveLead(leadData);
-
-        // F. Return success result
-        return {
-            business: biz,
-            contact: founderInfo,
-            slug,
-            previewUrl,
-            outreachMessage: message,
-            audit: { speedScore, screenshot: screenshotBase64 }, // Send base64 to frontend for immediate display
-            status: 'success'
-        };
-
-    } catch (error: any) {
-        console.error(`Failed to process ${biz.name}:`, error);
-        return {
-            business: biz,
-            contact: {},
-            slug: '',
-            previewUrl: '',
-            outreachMessage: '',
-            audit: {},
-            status: 'error',
-            error: error.message
-        };
-    }
-};
-
-export const runPipeline = async (keyword: string, location: string, maxResults: number = 5, projectId?: string, templateType: string = 'medspa'): Promise<PipelineResult[]> => {
-    console.log(`[Pipeline] Starting for "${keyword}" in "${location}" (Project: ${projectId || 'None'}) using template: ${templateType}`);
-
-    // 1. Discover
-    let businesses: DiscoveredBusiness[] = [];
-    try {
-        businesses = await discoverBusinesses({ query: keyword, location, maxResults });
-    } catch (e) {
-        console.error("Discovery failed", e);
-        throw e;
-    }
-
-    const results: PipelineResult[] = [];
-
-    // 2. Process each lead
-    // (In production, use P-Queue or Promise.allLimit. Here, standard for-of loop to avoid rate limits)
-    for (const biz of businesses) {
-        const result = await processLead(biz, projectId, templateType);
-        results.push(result);
-    }
-
-    return results;
-};
+        scraperProcess.on('error', (err) => {
+            console.error(`[Pipeline] Failed to start scraper:`, err);
+            reject(err);
+        });
+    });
+}

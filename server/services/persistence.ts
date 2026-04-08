@@ -382,6 +382,10 @@ export const updateBusinessField = async (id: string, updates: Partial<Business>
     if (updates.ragKnowledgeBase !== undefined) rowUpdates.rag_knowledge_base = updates.ragKnowledgeBase;
     if (updates.reviewUrl !== undefined) rowUpdates.review_url = updates.reviewUrl;
     if (updates.missedCallTemplate !== undefined) rowUpdates.missed_call_template = updates.missedCallTemplate;
+    if (updates.runningAds !== undefined) {
+        // Merge into existing audit_data JSONB — fetch first, then patch
+        rowUpdates.audit_data = { running_ads: updates.runningAds };
+    }
 
     rowUpdates.updated_at = new Date().toISOString();
 

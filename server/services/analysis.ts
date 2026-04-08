@@ -373,7 +373,8 @@ export const bulkAnalyze = async (leads: { id: string; url: string; name: string
     return results;
 };
 
-// Fallback logic for Email extraction via Gemini URL Context (from Python logic)
+// Fallback logic for Email extraction via Gemini URL Context
+// Uses the url_context tool so Gemini actually fetches and reads the live page
 export const extractEmailGemini = async (websiteUrl: string): Promise<string | null> => {
     if (!GEMINI_API_KEY) {
         console.warn("Missing GEMINI_API_KEY for extractEmailGemini");
@@ -383,7 +384,7 @@ export const extractEmailGemini = async (websiteUrl: string): Promise<string | n
     const prompt = `Visit this URL and extract any email address you find on the page or contact page: ${websiteUrl}. Return only the email address, nothing else. If no email found, return NULL.`;
 
     try {
-        console.log(`[Gemini Fallback] Checking ${websiteUrl}...`);
+        console.log(`[Gemini Fallback] Fetching live page: ${websiteUrl}...`);
         const response = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
             {
@@ -391,34 +392,43 @@ export const extractEmailGemini = async (websiteUrl: string): Promise<string | n
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     contents: [{
-                        parts: [
-                            { text: prompt }
-                        ]
+                        parts: [{ text: prompt }]
                     }],
-                    generationConfig: { temperature: 0.1, maxOutputTokens: 50 }
+                    tools: [{ url_context: {} }],
+                    generationConfig: { temperature: 0.0, maxOutputTokens: 100 }
                 })
             }
         );
 
         if (!response.ok) {
-            console.error(`[Gemini Fallback] Failed for ${websiteUrl}: ${response.status}`);
+            const errBody = await response.text();
+            console.error(`[Gemini Fallback] API error ${response.status} for ${websiteUrl}: ${errBody}`);
             return null;
         }
 
         const data = await response.json();
+        
+        // Log which URLs Gemini actually fetched (verification)
+        const urlMetadata = data.candidates?.[0]?.urlContextMetadata;
+        if (urlMetadata) {
+            console.log(`[Gemini Fallback] URLs fetched:`, JSON.stringify(urlMetadata));
+        }
+
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
         const cleanText = text.trim();
         
-        if (!cleanText || cleanText === 'NULL' || cleanText === 'null') {
+        if (!cleanText || cleanText.toUpperCase() === 'NULL') {
+            console.log(`[Gemini Fallback] No email found on ${websiteUrl}`);
             return null;
         }
         
-        // Final sanity check that it looks somewhat like an email (to prevent weird outputs)
+        // Sanity check: must look like an email
         if (cleanText.includes('@') && cleanText.includes('.')) {
             console.log(`[Gemini Fallback] Found email: ${cleanText}`);
             return cleanText;
         }
         
+        console.log(`[Gemini Fallback] Response didn't look like an email: "${cleanText}"`);
         return null;
     } catch (e) {
         console.error(`[Gemini Fallback] Error on ${websiteUrl}:`, e);

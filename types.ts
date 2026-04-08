@@ -33,6 +33,7 @@ export interface Business {
   instagram?: string;
   linkedin?: string;
   contactEmail?: string;
+  runningAds?: boolean; // Serper Ads Data
 
   // Design Sales Data
   isQualified?: boolean; // True if website is bad

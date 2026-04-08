@@ -72,6 +72,7 @@ interface Business {
     reviewUrl?: string;
     missedCallTemplate?: string;
     rank?: number;
+    runningAds?: boolean;
 }
 
 // Supabase row type (snake_case)
@@ -158,7 +159,7 @@ const businessToRow = (b: Business): Partial<LeadRow> => {
         below_fold_screenshot: b.belowFoldScreenshot || null,
         screenshots: b.screenshots || null,
         preview_url: b.previewSiteUrl || null,
-        audit_data: b.auditResult || null,
+        audit_data: { ...(b.auditResult || {}), running_ads: b.runningAds ?? null },
         pagespeed_mobile: b.pageSpeedMobile || null,
         pagespeed_desktop: b.pageSpeedDesktop || null,
         analysis_bullets: b.analysisBullets || null,

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Search, Loader2, Play, Building2, MapPin, Database, Filter, ExternalLink, Activity, Mail, Check, RefreshCw, Smartphone, X, User, Globe, ChevronDown } from 'lucide-react';
 import { Business } from '../types';
-import { generateWebsite, uploadLogo, enrichBusiness, bulkEnrich, bulkAnalyze, bulkCheckAds, bulkFallbackEmail } from '../services/backendApi';
+import { generateWebsite, uploadLogo, enrichBusiness, bulkEnrich, bulkAnalyze, bulkCheckAds, bulkFallbackEmail, syncBusinessesToDB } from '../services/backendApi';
 
 export default function PipelineSearch({ initialResults = [], projectId, onUpdateResult }: { initialResults?: any[], projectId?: string, onUpdateResult?: (id: string, data: Partial<Business>) => void }) {
   const [service, setService] = useState('');
@@ -164,6 +164,14 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
             return r;
         });
         setResults(newResults);
+        
+        await syncBusinessesToDB(newResults);
+        if (onUpdateResult) {
+            newResults.forEach(nr => {
+                if (adsData[nr.id] !== undefined) onUpdateResult(nr.id, { runningAds: adsData[nr.id] });
+            });
+        }
+        
         setStatusText('Google Ads check complete.');
     } catch (e: any) {
         console.error(e);
@@ -197,6 +205,14 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
             return r;
         });
         setResults(newResults);
+        
+        await syncBusinessesToDB(newResults);
+        if (onUpdateResult) {
+            newResults.forEach(nr => {
+                if (emailData[nr.id] && emailData[nr.id] !== 'NULL') onUpdateResult(nr.id, { contactEmail: emailData[nr.id] });
+            });
+        }
+        
         setStatusText('Gemini Email Fallback complete.');
     } catch (e: any) {
         console.error(e);

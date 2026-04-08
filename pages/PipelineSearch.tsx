@@ -442,17 +442,17 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                         )}
                       </td>
                       <td className="px-4 py-3" onClick={() => openContactModal(r)}>
-                        {r.email ? (
-                            <span className="text-emerald-700">{r.email}</span>
+                        {r.contactEmail || r.email ? (
+                            <span className="text-emerald-700">{r.contactEmail || r.email}</span>
                         ) : (
                             <span className="text-amber-600 italic text-xs">Missing</span>
                         )}
                       </td>
                       <td className="px-4 py-3" onClick={() => openContactModal(r)}>
-                        {r.ads === true ? (
+                        {r.runningAds === true ? (
                           <span className="text-emerald-600 font-bold">Yes</span>
-                        ) : r.ads === false && r.adsChecked ? (
-                          <span className="text-slate-400">No</span>
+                        ) : r.runningAds === false ? (
+                          <span className="text-slate-400 font-bold">No</span>
                         ) : (
                           <span className="text-slate-300 italic text-xs">Not checked</span>
                         )}

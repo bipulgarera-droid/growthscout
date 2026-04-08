@@ -97,8 +97,10 @@ app.get('/api/pipeline/stream', async (req, res) => {
                 res.write(`data: ${JSON.stringify({ type: 'log', message: 'Saving leads to Supabase...' })}\n\n`);
                 
                 // We need to map it slightly to fit the DB schema expectations like the frontend did
+                // CRITICAL: place_id from Google Maps is NOT a UUID — must generate proper UUIDs
+                const { randomUUID } = await import('crypto');
                 const bRecords = result.records.map((r: any) => ({
-                    id: r.place_id,
+                    id: randomUUID(),
                     name: r.name,
                     address: r.address,
                     website: r.website || '',
@@ -109,7 +111,10 @@ app.get('/api/pipeline/stream', async (req, res) => {
                     contactEmail: r.email || '',
                     status: 'new',
                     qualityScore: r.score || 0,
-                    projectId: (projectId as string) || undefined
+                    projectId: projectId || undefined,
+                    source: 'pipeline',
+                    searchQuery: service as string,
+                    searchLocation: city as string,
                 }));
                 
                 const { bulkSaveBusinesses } = await import('./services/persistence.js');

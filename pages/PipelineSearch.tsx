@@ -564,7 +564,7 @@ export default function PipelineSearch({ initialResults = [], onUpdateResult }: 
                               ...selectedContact,
                               contactEmail: data.email || selectedContact.contactEmail,
                               phone: data.phone || selectedContact.phone,
-                              founderName: data.owner || (selectedContact as any).founderName,
+                              founderName: (data as any).owner || data.founderName || (selectedContact as any).founderName,
                               linkedin: data.linkedin || (selectedContact as any).linkedin,
                               instagram: data.instagram || (selectedContact as any).instagram,
                             };

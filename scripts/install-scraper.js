@@ -46,8 +46,12 @@ async function downloadBinary() {
     
     // We can use curl for simplicity as it exists on railway and macos
     try {
-        console.log(`Running: curl -L -o "${targetFile}" "${url}"`);
-        execSync(`curl -L -o "${targetFile}" "${url}"`, { stdio: 'inherit' });
+        if (!fs.existsSync(targetFile)) {
+            console.log(`Running: curl -f -L -o "${targetFile}" "${url}"`);
+            execSync(`curl -f -L -o "${targetFile}" "${url}"`, { stdio: 'inherit' });
+        } else {
+            console.log(`Binary already exists at ${targetFile}, skipping download to prevent rate-limiting.`);
+        }
         
         if (platform !== 'windows') {
             execSync(`chmod +x "${targetFile}"`);

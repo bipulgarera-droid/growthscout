@@ -190,6 +190,7 @@ router.post('/api/pipeline/fallback-email', async (req, res) => {
             return res.status(400).json({ error: 'leads array required' });
         }
 
+        const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
         const results: Record<string, string | null> = {};
         for (const lead of leads) {
             try {
@@ -199,12 +200,15 @@ router.post('/api/pipeline/fallback-email', async (req, res) => {
                 }
                 const email = await extractEmailJina(lead.website);
                 results[lead.id] = email;
+                // Polite delay to avoid Jina AI rate limiting on large batches
+                await sleep(600);
             } catch (err) {
                 console.error(`Fallback email failed for ${lead.website}:`, err);
                 results[lead.id] = null;
             }
         }
         res.json({ success: true, results });
+
     } catch (error: any) {
         console.error('Fallback Email Error:', error);
         res.status(500).json({ error: error.message });

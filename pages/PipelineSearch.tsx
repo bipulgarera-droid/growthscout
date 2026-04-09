@@ -314,25 +314,23 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
   const handleGosomEmail = async () => {
     if (results.length === 0) return;
     
-    // Add force recheck option
-    const forceRecheck = window.confirm("Do you want to force re-check ALL websites via Gosom? (Warning: Gosom does a deep recursive crawl so this takes longer. Click OK to recheck all. Click Cancel to only check missing emails.)");
+    const forceRecheck = window.confirm("Run Gosom Deep Email Search? It queries Google Maps for each business name + city and extracts emails. Click OK to recheck all. Click Cancel to only check missing emails.");
     
-    setStatusText('Running Deep Gosom Crawler (-email -depth 2)...');
+    setStatusText('Running Gosom Email Search via Google Maps...');
     setIsScraping(true);
     try {
-        const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'lawnlove.com', 'thumbtack.com', 'angi.com'];
         const payload = results
-            .filter(r => (forceRecheck ? true : (!r.contactEmail && !r.email)) && r.website)
-            .filter(r => !junkDomains.some(d => r.website?.includes(d)))
-            .map(r => ({ id: r.id, website: r.website }));
+            .filter(r => (forceRecheck ? true : (!r.contactEmail && !r.email)) && r.name)
+            .map(r => ({ id: r.id, name: r.name, address: r.address }));
             
         if (payload.length === 0) {
-            setStatusText('No missing emails with valid websites found.');
+            setStatusText('No missing emails found.');
             setIsScraping(false);
             return;
         }
 
         const emailData = await bulkGosomEmail(payload);
+
         
         const newResults = results.map(r => {
             const wasChecked = payload.some(p => p.id === r.id);

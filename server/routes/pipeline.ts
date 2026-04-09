@@ -250,12 +250,14 @@ router.post('/api/pipeline/gosom-email', async (req, res) => {
             return res.status(400).json({ error: 'leads array required' });
         }
 
-        const leadsWithWebsite = leads.filter((l: any) => l.website);
-        if (leadsWithWebsite.length === 0) {
+        // Filter to leads that have at least a name (required for GM query)
+        const validLeads = leads.filter((l: any) => l.name);
+        if (validLeads.length === 0) {
             return res.json({ success: true, results: {} });
         }
 
-        const results = await bulkScrapeEmailGosom(leadsWithWebsite, 3);
+        // Pass concurrency of 2 to be polite with Google Maps
+        const results = await bulkScrapeEmailGosom(validLeads, 2);
         res.json({ success: true, results });
     } catch (error: any) {
         console.error('Gosom Email Error:', error);
@@ -264,6 +266,7 @@ router.post('/api/pipeline/gosom-email', async (req, res) => {
 });
 
 import { generateAllMessages, LeadOutreachInput } from '../services/outreach.js';
+
 
 router.post('/api/pipeline/generate', async (req, res) => {
     try {

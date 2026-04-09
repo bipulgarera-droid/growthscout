@@ -12,70 +12,74 @@ const binExt = os.platform() === 'win32' ? '.exe' : '';
 const BINARY_PATH = path.resolve(__dirname, '../bin/scraper/google_maps_scraper' + binExt);
 
 /**
- * Uses the gosom google_maps_scraper binary with -email flag to scrape emails
- * from a specific website by doing a deep recursive crawl.
+ * Uses the gosom google_maps_scraper binary with -email flag.
  * 
- * This is far more thorough than Jina AI because it follows internal links recursively.
- * It will find emails buried in /about, /contact, /team, /staff, etc.
+ * IMPORTANT: gosom is a Google Maps scraper — it takes search queries like 
+ * "plumber in Austin TX", finds business listings, and extracts emails from 
+ * each business's own website recursively.
+ * 
+ * It does NOT accept direct website URLs as input. It crawls GM search results.
+ * This makes it great for bulk-finding emails by searching business name + city.
  */
-export const scrapeEmailGosom = async (websiteUrl: string): Promise<string | null> => {
+export const scrapeEmailGosom = async (businessName: string, city: string): Promise<string | null> => {
     if (!fs.existsSync(BINARY_PATH)) {
         console.warn(`[Gosom] Binary not found at ${BINARY_PATH}. Run npm install to trigger postinstall.`);
         return null;
     }
 
-    // Junk domains that gosom can't meaningfully process
-    const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 
-                         'lawnlove.com', 'thumbtack.com', 'angi.com', 'homeadvisor.com'];
-    if (junkDomains.some(d => websiteUrl.includes(d))) {
-        return null;
-    }
+    // Build a Google Maps search query from the business name + city
+    const query = `${businessName} ${city}`.trim();
 
-    const tmpOutput = path.join(os.tmpdir(), `gosom_email_${Date.now()}.csv`);
+    // Write the query to a temp file (gosom requires -input <file>)
+    const tmpInput = path.join(os.tmpdir(), `gosom_input_${Date.now()}.txt`);
+    const tmpOutput = path.join(os.tmpdir(), `gosom_output_${Date.now()}.csv`);
+
+    fs.writeFileSync(tmpInput, query + '\n', 'utf8');
 
     return new Promise((resolve) => {
-        console.log(`[Gosom] Deep email scrape: ${websiteUrl}`);
+        console.log(`[Gosom] Querying Google Maps for email: "${query}"`);
 
         const timeout = setTimeout(() => {
             child.kill('SIGTERM');
-            console.log(`[Gosom] Timed out for ${websiteUrl}`);
+            console.log(`[Gosom] Timed out for "${query}"`);
+            if (fs.existsSync(tmpInput)) fs.unlinkSync(tmpInput);
             if (fs.existsSync(tmpOutput)) fs.unlinkSync(tmpOutput);
             resolve(null);
-        }, 25000); // 25 second hard timeout per site
+        }, 45000); // 45-second timeout (email mode needs more time)
 
         // gosom flags:
-        // -email          : enable email extraction from crawled pages
-        // -depth 2        : crawl 2 levels deep (homepage + linked pages)
-        // -c 1            : 1 concurrent worker (polite, avoids rate limits)
-        // -input-urls     : provide the URL directly from stdin
-        // -results-file   : write CSV output to temp file
+        // -email       : enable email extraction by visiting each business's website
+        // -depth 2     : crawl 2 levels deep per website
+        // -c 1         : 1 concurrent worker
+        // -input       : file containing search queries (one per line)
+        // -results-file: output CSV
+        // -limit 1     : only grab the top Google Maps result (we only want emails for that specific business)
         const child = spawn(BINARY_PATH, [
             '-email',
             '-depth', '2',
             '-c', '1',
-            '-input-urls', '-',   // read URLs from stdin
+            '-input', tmpInput,
             '-results-file', tmpOutput,
+            '-limit', '1',   // Only the top result for this business
         ]);
 
-        // Write the URL to stdin and close the stream
-        child.stdin.write(websiteUrl + '\n');
-        child.stdin.end();
+        let stderr = '';
+        child.stderr.on('data', (d) => { stderr += d.toString(); });
 
         child.on('close', (code) => {
             clearTimeout(timeout);
+            if (fs.existsSync(tmpInput)) fs.unlinkSync(tmpInput);
 
             if (!fs.existsSync(tmpOutput)) {
-                console.log(`[Gosom] No output file for ${websiteUrl}`);
+                console.log(`[Gosom] No output file for "${query}". Stderr: ${stderr.slice(0, 300)}`);
                 resolve(null);
                 return;
             }
 
             try {
                 const csv = fs.readFileSync(tmpOutput, 'utf8');
-                fs.unlinkSync(tmpOutput); // Clean up temp file
+                fs.unlinkSync(tmpOutput);
 
-                // Parse CSV: gosom outputs columns including 'emails'
-                // Header row example: title,link,category,...,emails,...
                 const lines = csv.trim().split('\n');
                 if (lines.length < 2) {
                     resolve(null);
@@ -86,32 +90,28 @@ export const scrapeEmailGosom = async (websiteUrl: string): Promise<string | nul
                 const emailColIdx = headers.findIndex(h => h.includes('email'));
 
                 if (emailColIdx === -1) {
-                    console.log(`[Gosom] No email column found in output for ${websiteUrl}`);
+                    console.log(`[Gosom] No email column in output for "${query}"`);
                     resolve(null);
                     return;
                 }
 
-                // Scan all data rows for any email value
+                // Scan all data rows for any valid email
+                const emailRegex = /^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
                 for (let i = 1; i < lines.length; i++) {
                     const cols = lines[i].split(',');
                     const emailField = cols[emailColIdx]?.trim().replace(/^"|"$/g, '');
-                    
-                    if (emailField && emailField.includes('@') && emailField.includes('.')) {
-                        // Basic sanity check
-                        const emailRegex = /^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-                        if (emailRegex.test(emailField)) {
-                            console.log(`[Gosom] Found email for ${websiteUrl}: ${emailField}`);
-                            resolve(emailField.toLowerCase());
-                            return;
-                        }
+                    if (emailField && emailRegex.test(emailField)) {
+                        console.log(`[Gosom] Found email for "${query}": ${emailField}`);
+                        resolve(emailField.toLowerCase());
+                        return;
                     }
                 }
 
-                console.log(`[Gosom] No valid email in output for ${websiteUrl}`);
+                console.log(`[Gosom] No valid email in output for "${query}"`);
                 resolve(null);
 
             } catch (e) {
-                console.error(`[Gosom] Error parsing output for ${websiteUrl}:`, e);
+                console.error(`[Gosom] Error parsing output for "${query}":`, e);
                 if (fs.existsSync(tmpOutput)) fs.unlinkSync(tmpOutput);
                 resolve(null);
             }
@@ -119,7 +119,8 @@ export const scrapeEmailGosom = async (websiteUrl: string): Promise<string | nul
 
         child.on('error', (err) => {
             clearTimeout(timeout);
-            console.error(`[Gosom] Process error for ${websiteUrl}:`, err.message);
+            console.error(`[Gosom] Process error for "${query}":`, err.message);
+            if (fs.existsSync(tmpInput)) fs.unlinkSync(tmpInput);
             if (fs.existsSync(tmpOutput)) fs.unlinkSync(tmpOutput);
             resolve(null);
         });
@@ -127,20 +128,27 @@ export const scrapeEmailGosom = async (websiteUrl: string): Promise<string | nul
 };
 
 /**
- * Bulk gosom email scraper - processes websites one at a time with concurrency control
+ * Bulk gosom email scraper — uses business name + city to query Google Maps,
+ * then extracts email from the top matching result's website.
+ * 
+ * Input shape now includes businessName and city (extracted from address),
+ * plus website used as a fallback label only.
  */
 export const bulkScrapeEmailGosom = async (
-    leads: Array<{ id: string; website: string }>,
-    concurrency = 3
+    leads: Array<{ id: string; name: string; address?: string }>,
+    concurrency = 2
 ): Promise<Record<string, string | null>> => {
     const results: Record<string, string | null> = {};
-    
-    // Process in batches to avoid overwhelming the system
+
+    // Process in small batches to avoid hammering Google Maps
     for (let i = 0; i < leads.length; i += concurrency) {
         const batch = leads.slice(i, i + concurrency);
         const batchResults = await Promise.allSettled(
             batch.map(async (lead) => {
-                const email = await scrapeEmailGosom(lead.website);
+                // Extract city from address string (e.g. "123 Main St, Austin, TX 78701")
+                const cityMatch = lead.address?.match(/,\s*([^,]+),\s*[A-Z]{2}/);
+                const city = cityMatch ? cityMatch[1].trim() : '';
+                const email = await scrapeEmailGosom(lead.name, city);
                 return { id: lead.id, email };
             })
         );

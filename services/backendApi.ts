@@ -176,8 +176,9 @@ export const bulkFallbackEmail = async (leads: { id: string; website: string }[]
     return data.results;
 };
 
-// Deep Email Discovery via gosom binary (recursive website crawl with -email flag)
-export const bulkGosomEmail = async (leads: { id: string; website: string }[]): Promise<Record<string, string | null>> => {
+// Deep Email Discovery via gosom binary (queries Google Maps by business name+city to find email)
+export const bulkGosomEmail = async (leads: { id: string; name: string; address?: string }[]): Promise<Record<string, string | null>> => {
+
     const response = await fetch(`${API_BASE}/pipeline/gosom-email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

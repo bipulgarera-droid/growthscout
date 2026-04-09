@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { resolveMx } from 'dns/promises';
 import { captureScreenshot } from './screenshot.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -373,15 +374,29 @@ export const bulkAnalyze = async (leads: { id: string; url: string; name: string
     return results;
 };
 
-// Fallback logic for Email extraction via Gemini URL Context
-// Uses the url_context tool so Gemini actually fetches and reads the live page
+// Helper: Verify email formatting and domain MX records
+const isValidEmailAddress = async (email: string): Promise<boolean> => {
+    if (!email || !email.includes('@') || !email.includes('.')) return false;
+    
+    // Strict format check
+    const formatRegex = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}$/;
+    if (!formatRegex.test(email)) return false;
+
+    try {
+        const domain = email.split('@')[1];
+        const records = await resolveMx(domain);
+        return records && records.length > 0;
+    } catch {
+        return false;
+    }
+};
+
+// Extractor logic for Email extraction via Deterministic Jina AI Scraping + Gemini Guardrails
 export const extractEmailGemini = async (websiteUrl: string): Promise<string | null> => {
     if (!GEMINI_API_KEY) {
         console.warn("Missing GEMINI_API_KEY for extractEmailGemini");
         return null;
     }
-
-    const prompt = `Visit this URL and extract any email address you find on the page or contact page: ${websiteUrl}. Return only the email address, nothing else. If no email found, return NULL.`;
 
     // Skip URLs that are social media or directory sites — they won't have business emails
     const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'lawnlove.com', 'thumbtack.com', 'angi.com', 'homeadvisor.com', 'houzz.com'];
@@ -391,7 +406,40 @@ export const extractEmailGemini = async (websiteUrl: string): Promise<string | n
     }
 
     try {
-        console.log(`[Gemini Fallback] Fetching live page: ${websiteUrl}...`);
+        console.log(`[Gemini Fallback] Scraping website content natively via Jina AI: ${websiteUrl}...`);
+        
+        let pageContent = '';
+        try {
+            // Jina AI converts any URL to heavily optimized pure markdown context
+            const jinaResponse = await fetch(`https://r.jina.ai/${websiteUrl}`);
+            if (jinaResponse.ok) {
+                // Limit to roughly ~15k characters (so it doesn't blow out Gemini tokens on massive sites)
+                pageContent = (await jinaResponse.text()).substring(0, 15000);
+            }
+        } catch (e) {
+            console.error(`[Gemini Fallback] Jina Scrape failed softly for ${websiteUrl}:`, e);
+        }
+
+        if (!pageContent || pageContent.length < 50) {
+            console.log(`[Gemini Fallback] Insufficient text retrieved to run extraction on ${websiteUrl}.`);
+            return null;
+        }
+
+        // Strict anti-hallucination prompt
+        const prompt = `
+Fetch this URL content: ${websiteUrl}
+====================
+WEBSITE CONTENT:
+${pageContent}
+====================
+
+Look for any email address visible on the page or linked contact page.
+ONLY return an email if you can see it explicitly written on the page text provided.
+Do NOT guess or infer emails from the domain name.
+If you find one, return ONLY the email address.
+If you cannot find one explicitly written inside the markdown content, return exactly: NULL
+`;
+
         const response = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
             {
@@ -416,19 +464,21 @@ export const extractEmailGemini = async (websiteUrl: string): Promise<string | n
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
         const cleanText = text.trim();
         
-        if (!cleanText || cleanText.toUpperCase() === 'NULL') {
-            console.log(`[Gemini Fallback] No email found on ${websiteUrl}`);
+        if (!cleanText || cleanText.toUpperCase() === 'NULL' || cleanText.toUpperCase().includes('NULL')) {
+            console.log(`[Gemini Fallback] No email found safely on ${websiteUrl}`);
             return null;
         }
         
-        // Sanity check: must look like an email
-        if (cleanText.includes('@') && cleanText.includes('.')) {
-            console.log(`[Gemini Fallback] Found email: ${cleanText}`);
+        // Final sanity check through DNS MX records ensuring the email actually exists
+        const isValid = await isValidEmailAddress(cleanText);
+        if (isValid) {
+            console.log(`[Gemini Fallback] Successfully verified explicitly scraped email: ${cleanText}`);
             return cleanText;
+        } else {
+            console.log(`[Gemini Fallback] Rejected hallucinated or invalid domain format: ${cleanText}`);
+            return null;
         }
         
-        console.log(`[Gemini Fallback] Response didn't look like an email: "${cleanText}"`);
-        return null;
     } catch (e) {
         console.error(`[Gemini Fallback] Error on ${websiteUrl}:`, e);
         return null;

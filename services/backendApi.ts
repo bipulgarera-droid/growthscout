@@ -176,6 +176,21 @@ export const bulkFallbackEmail = async (leads: { id: string; website: string }[]
     return data.results;
 };
 
+// Deep Email Discovery via gosom binary (recursive website crawl with -email flag)
+export const bulkGosomEmail = async (leads: { id: string; website: string }[]): Promise<Record<string, string | null>> => {
+    const response = await fetch(`${API_BASE}/pipeline/gosom-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leads })
+    });
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Gosom email scrape failed');
+    }
+    const data = await response.json();
+    return data.results;
+};
+
 // Bulk analyze websites (screenshot + PageSpeed + Gemini scoring)
 export const bulkAnalyze = async (leads: { id: string; url: string; name: string }[]): Promise<Record<string, AnalysisResult>> => {
     const response = await fetch(`${API_BASE}/pipeline/analyze`, {

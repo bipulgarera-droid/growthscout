@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Search, Loader2, Play, Building2, MapPin, Database, Filter, ExternalLink, Activity, Mail, Check, RefreshCw, Smartphone, X, User, Globe, ChevronDown } from 'lucide-react';
 import { Business } from '../types';
-import { generateWebsite, uploadLogo, enrichBusiness, bulkEnrich, bulkAnalyze, bulkCheckAds, bulkDetectAdsHTML, bulkFallbackEmail, syncBusinessesToDB } from '../services/backendApi';
+import { generateWebsite, uploadLogo, enrichBusiness, bulkEnrich, bulkAnalyze, bulkCheckAds, bulkDetectAdsHTML, bulkFallbackEmail, bulkGosomEmail, syncBusinessesToDB, updateBusinessInDB } from '../services/backendApi';
 
 export default function PipelineSearch({ initialResults = [], projectId, onUpdateResult }: { initialResults?: any[], projectId?: string, onUpdateResult?: (id: string, data: Partial<Business>) => void }) {
   const [service, setService] = useState('');
@@ -267,18 +267,28 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
             
             if (wasChecked) {
                 if (emailData[r.id] && emailData[r.id] !== 'NULL') {
-                    // Successfully found a new real email
+                    // Found a real email — use it
                     return { ...r, contactEmail: emailData[r.id] };
                 } else if (forceRecheck) {
-                    // We force checked it, and it returned NULL. We must wipe the old hallucinated email!
-                    return { ...r, contactEmail: undefined };
+                    // Force checked: returned nothing, explicitly clear any hallucinated email
+                    return { ...r, contactEmail: null as any };
                 }
             }
             return r;
         });
         setResults(newResults);
         
-        await syncBusinessesToDB(newResults);
+        // For records where email was wiped (force recheck + no result), PATCH them directly in Supabase
+        // Don't rely only on bulk sync which may not overwrite with null reliably
+        const wipedIds = payload
+            .filter(p => forceRecheck && (!emailData[p.id] || emailData[p.id] === 'NULL'))
+            .map(p => p.id);
+        
+        await Promise.allSettled([
+            syncBusinessesToDB(newResults),
+            ...wipedIds.map(id => updateBusinessInDB(id, { contactEmail: null as any }))
+        ]);
+
         if (onUpdateResult) {
             newResults.forEach(nr => {
                 const wasChecked = payload.some(p => p.id === nr.id);
@@ -286,7 +296,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                     if (emailData[nr.id] && emailData[nr.id] !== 'NULL') {
                         onUpdateResult(nr.id, { contactEmail: emailData[nr.id] });
                     } else if (forceRecheck) {
-                        onUpdateResult(nr.id, { contactEmail: undefined });
+                        onUpdateResult(nr.id, { contactEmail: null as any });
                     }
                 }
             });
@@ -301,6 +311,72 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     }
   };
 
+  const handleGosomEmail = async () => {
+    if (results.length === 0) return;
+    
+    // Add force recheck option
+    const forceRecheck = window.confirm("Do you want to force re-check ALL websites via Gosom? (Warning: Gosom does a deep recursive crawl so this takes longer. Click OK to recheck all. Click Cancel to only check missing emails.)");
+    
+    setStatusText('Running Deep Gosom Crawler (-email -depth 2)...');
+    setIsScraping(true);
+    try {
+        const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'lawnlove.com', 'thumbtack.com', 'angi.com'];
+        const payload = results
+            .filter(r => (forceRecheck ? true : (!r.contactEmail && !r.email)) && r.website)
+            .filter(r => !junkDomains.some(d => r.website?.includes(d)))
+            .map(r => ({ id: r.id, website: r.website }));
+            
+        if (payload.length === 0) {
+            setStatusText('No missing emails with valid websites found.');
+            setIsScraping(false);
+            return;
+        }
+
+        const emailData = await bulkGosomEmail(payload);
+        
+        const newResults = results.map(r => {
+            const wasChecked = payload.some(p => p.id === r.id);
+            if (wasChecked) {
+                if (emailData[r.id] && emailData[r.id] !== 'NULL') {
+                    return { ...r, contactEmail: emailData[r.id] };
+                } else if (forceRecheck) {
+                    return { ...r, contactEmail: null as any };
+                }
+            }
+            return r;
+        });
+        setResults(newResults);
+        
+        const wipedIds = payload
+            .filter(p => forceRecheck && (!emailData[p.id] || emailData[p.id] === 'NULL'))
+            .map(p => p.id);
+        
+        await Promise.allSettled([
+            syncBusinessesToDB(newResults),
+            ...wipedIds.map(id => updateBusinessInDB(id, { contactEmail: null as any }))
+        ]);
+
+        if (onUpdateResult) {
+            newResults.forEach(nr => {
+                const wasChecked = payload.some(p => p.id === nr.id);
+                if (wasChecked) {
+                    if (emailData[nr.id] && emailData[nr.id] !== 'NULL') {
+                        onUpdateResult(nr.id, { contactEmail: emailData[nr.id] });
+                    } else if (forceRecheck) {
+                        onUpdateResult(nr.id, { contactEmail: null as any });
+                    }
+                }
+            });
+        }
+        
+        setStatusText('Deep Gosom run complete.');
+    } catch (e: any) {
+        console.error(e);
+        setStatusText('Gosom Scrape failed: ' + e.message);
+    } finally {
+        setIsScraping(false);
+    }
+  };
 
   const filteredResults = useMemo(() => {
     return results.filter(r => {
@@ -402,6 +478,9 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                 </button>
                 <button onClick={handleFallbackEmail} disabled={isScraping || results.length === 0} className="bg-cyan-50 text-cyan-600 px-3 py-1.5 rounded-lg border border-cyan-200 text-xs font-medium hover:bg-cyan-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
                     <Mail size={14} /> Fallback Email Search (Jina Scraper)
+                </button>
+                <button onClick={handleGosomEmail} disabled={isScraping || results.length === 0} className="bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-lg border border-emerald-200 text-xs font-medium hover:bg-emerald-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
+                    <Database size={14} /> Deep Email Scrape (Gosom binary)
                 </button>
             </div>
         </div>

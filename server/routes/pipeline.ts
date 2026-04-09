@@ -240,6 +240,29 @@ router.post('/api/pipeline/detect-ads-html', async (req, res) => {
 });
 
 
+import { bulkScrapeEmailGosom } from '../services/gososmEmailScraper.js';
+
+// Deep Email Discovery via gosom binary (recursive website crawl with -email flag)
+router.post('/api/pipeline/gosom-email', async (req, res) => {
+    try {
+        const { leads } = req.body;
+        if (!leads || !Array.isArray(leads)) {
+            return res.status(400).json({ error: 'leads array required' });
+        }
+
+        const leadsWithWebsite = leads.filter((l: any) => l.website);
+        if (leadsWithWebsite.length === 0) {
+            return res.json({ success: true, results: {} });
+        }
+
+        const results = await bulkScrapeEmailGosom(leadsWithWebsite, 3);
+        res.json({ success: true, results });
+    } catch (error: any) {
+        console.error('Gosom Email Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 import { generateAllMessages, LeadOutreachInput } from '../services/outreach.js';
 
 router.post('/api/pipeline/generate', async (req, res) => {

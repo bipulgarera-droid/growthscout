@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { Search, Loader2, Play, Building2, MapPin, Database, Filter, ExternalLink, Activity, Mail, Check, RefreshCw, Smartphone, X, User, Globe, ChevronDown, Send } from 'lucide-react';
 import { Business } from '../types';
-import { generateWebsite, uploadLogo, enrichBusiness, bulkEnrich, bulkAnalyze, bulkCheckAds, bulkDetectAdsHTML, bulkFallbackEmail, bulkGosomEmail, syncBusinessesToDB, updateBusinessInDB } from '../services/backendApi';
+import { generateWebsite, uploadLogo, enrichBusiness, bulkEnrich, bulkAnalyze, bulkCheckAds, bulkDetectAdsHTML, bulkFallbackEmail, bulkSerperEmail, syncBusinessesToDB, updateBusinessInDB } from '../services/backendApi';
+
 
 export default function PipelineSearch({ initialResults = [], projectId, onUpdateResult }: { initialResults?: any[], projectId?: string, onUpdateResult?: (id: string, data: Partial<Business>) => void }) {
   const [service, setService] = useState('');
@@ -330,38 +331,38 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     }
   };
 
-  const handleGosomEmail = async () => {
+  const handleSerperEmail = async () => {
     if (results.length === 0) return;
     
-    // If contacts are selected, only process those. Otherwise ask if they want all-missing.
     const hasSelection = selectedIds.size > 0;
     
     if (!hasSelection) {
-        const confirmed = window.confirm(`No contacts selected. Run Gosom Email Search on all ${results.filter(r => !r.contactEmail && !r.email).length} contacts with missing emails?`);
+        const confirmed = window.confirm(`Run Serper Email Search on all ${results.filter(r => !r.contactEmail && !r.email && r.website).length} contacts with missing emails?`);
         if (!confirmed) return;
     }
 
-    setStatusText('Running Gosom Email Search via Google Maps...');
+    setStatusText('Running Serper Email Search (domain + "email" query)...');
     setIsScraping(true);
     try {
-        // If selection exists, only process selected. Otherwise, only missing emails.
-        // IMPORTANT: selectedIds stores 'place_id || name' keys (matching the checkbox row key formula)
+        const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'lawnlove.com', 'thumbtack.com', 'angi.com'];
         const payload = results
             .filter(r => {
                 const rowKey = (r as any).place_id || r.name;
-                return hasSelection ? selectedIds.has(rowKey) : (!r.contactEmail && !r.email);
+                const inSelection = hasSelection ? selectedIds.has(rowKey) : true;
+                const needsEmail = !r.contactEmail && !r.email;
+                return inSelection && needsEmail && r.website;
             })
-            .filter(r => r.name)
-            .map(r => ({ id: r.id, name: r.name, address: r.address }));
-            
+            .filter(r => !junkDomains.some(d => r.website?.includes(d)))
+            .map(r => ({ id: r.id, website: r.website! }));
+
         if (payload.length === 0) {
             setStatusText('No contacts to process.');
             setIsScraping(false);
             return;
         }
 
-        setStatusText(`Running Gosom on ${payload.length} contact(s)...`);
-        const emailData = await bulkGosomEmail(payload);
+        setStatusText(`Serper searching ${payload.length} domain(s)...`);
+        const emailData = await bulkSerperEmail(payload);
 
         const newResults = results.map(r => {
             const wasChecked = payload.some(p => p.id === r.id);
@@ -371,7 +372,6 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
             return r;
         });
         setResults(newResults);
-        
         await syncBusinessesToDB(newResults);
 
         if (onUpdateResult) {
@@ -381,12 +381,12 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                 }
             });
         }
-        
+
         const found = payload.filter(p => emailData[p.id] && emailData[p.id] !== 'NULL').length;
-        setStatusText(`Gosom complete. Found ${found}/${payload.length} emails.`);
+        setStatusText(`Serper Email complete. Found ${found}/${payload.length} emails.`);
     } catch (e: any) {
         console.error(e);
-        setStatusText('Gosom Scrape failed: ' + e.message);
+        setStatusText('Serper Email failed: ' + e.message);
     } finally {
         setIsScraping(false);
     }
@@ -512,8 +512,8 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                     <Send size={14} /> Push to Outreach ({selectedIds.size})
                   </button>
                 )}
-                <button onClick={handleGosomEmail} disabled={isScraping || results.length === 0} className="bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-lg border border-emerald-200 text-xs font-medium hover:bg-emerald-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
-                    <Database size={14} /> Deep Email Scrape (Gosom binary)
+                <button onClick={handleSerperEmail} disabled={isScraping || results.length === 0} className="bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-lg border border-emerald-200 text-xs font-medium hover:bg-emerald-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
+                    <Database size={14} /> Email Search (Serper)
                 </button>
             </div>
         </div>

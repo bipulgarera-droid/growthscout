@@ -416,10 +416,44 @@ export const extractEmailJina = async (websiteUrl: string): Promise<string | nul
         }
 
         if (!pageContent || pageContent.length < 50) {
-            console.log(`[Email Fallback] Insufficient text retrieved on ${websiteUrl}.`);
-
+            console.log(`[Email Fallback] Jina insufficient for ${websiteUrl} — trying direct HTTP fetch...`);
+            // Fallback: Directly fetch the raw HTML and regex for emails
+            // This catches sites that block Jina but serve content to regular browsers
+            try {
+                const urlObj2 = new URL(websiteUrl);
+                const cleanBase2 = urlObj2.origin + urlObj2.pathname.replace(/\/$/, '');
+                const directPaths = ['', '/contact', '/contact-us', '/about'];
+                const emailRegexDirect = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z]{2,})/gi;
+                const browserHeaders = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                };
+                for (const p of directPaths) {
+                    try {
+                        const resp = await fetch(`${cleanBase2}${p}`, { 
+                            headers: browserHeaders,
+                            signal: AbortSignal.timeout(8000),
+                            redirect: 'follow'
+                        });
+                        if (resp.ok) {
+                            const html = await resp.text();
+                            const directMatches = html.match(emailRegexDirect) || [];
+                            const cleaned = [...new Set(directMatches)]
+                                .map(e => e.toLowerCase())
+                                .filter(e => !e.includes('sentry') && !e.includes('example.com') && !e.includes('wixpress') && !e.endsWith('.png') && !e.endsWith('.jpg') && !e.endsWith('.css') && !e.endsWith('.js') && e.includes('.') && e.split('@')[1]?.length > 3);
+                            if (cleaned.length > 0) {
+                                console.log(`[Email Fallback] Direct HTTP found email for ${websiteUrl}: ${cleaned[0]}`);
+                                return cleaned[0];
+                            }
+                        }
+                    } catch (_) { /* skip blocked paths */ }
+                }
+            } catch (_) { /* skip if URL is unparseable */ }
+            
+            console.log(`[Email Fallback] Insufficient text and no direct email for ${websiteUrl}.`);
             return null;
         }
+
 
         // Deterministic Regex extraction
         // Matches typical email formats while avoiding image extensions (e.g. logo.png@2x) and CSS

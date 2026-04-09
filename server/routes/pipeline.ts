@@ -244,30 +244,38 @@ router.post('/api/pipeline/detect-ads-html', async (req, res) => {
 });
 
 
-import { bulkScrapeEmailGosom } from '../services/gososmEmailScraper.js';
+import { serperEmailByDomain } from '../services/serper.js';
 
-// Deep Email Discovery via gosom binary (recursive website crawl with -email flag)
-router.post('/api/pipeline/gosom-email', async (req, res) => {
+// Email discovery via Serper: queries Google for `domain "email"` and extracts from snippets
+router.post('/api/pipeline/serper-email', async (req, res) => {
     try {
         const { leads } = req.body;
         if (!leads || !Array.isArray(leads)) {
             return res.status(400).json({ error: 'leads array required' });
         }
 
-        // Filter to leads that have at least a name (required for GM query)
-        const validLeads = leads.filter((l: any) => l.name);
-        if (validLeads.length === 0) {
-            return res.json({ success: true, results: {} });
+        const results: Record<string, string | null> = {};
+        const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+        for (const lead of leads) {
+            if (!lead.website) { results[lead.id] = null; continue; }
+            try {
+                results[lead.id] = await serperEmailByDomain(lead.website);
+            } catch (e) {
+                console.error(`Serper email failed for ${lead.website}:`, e);
+                results[lead.id] = null;
+            }
+            // Small delay to avoid Serper rate limits
+            await sleep(300);
         }
 
-        // Pass concurrency of 2 to be polite with Google Maps
-        const results = await bulkScrapeEmailGosom(validLeads, 2);
         res.json({ success: true, results });
     } catch (error: any) {
-        console.error('Gosom Email Error:', error);
+        console.error('Serper Email Error:', error);
         res.status(500).json({ error: error.message });
     }
 });
+
 
 import { generateAllMessages, LeadOutreachInput } from '../services/outreach.js';
 

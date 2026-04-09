@@ -176,21 +176,21 @@ export const bulkFallbackEmail = async (leads: { id: string; website: string }[]
     return data.results;
 };
 
-// Deep Email Discovery via gosom binary (queries Google Maps by business name+city to find email)
-export const bulkGosomEmail = async (leads: { id: string; name: string; address?: string }[]): Promise<Record<string, string | null>> => {
-
-    const response = await fetch(`${API_BASE}/pipeline/gosom-email`, {
+// Email Discovery via Serper: queries Google for `domain "email"` and extracts from snippets
+export const bulkSerperEmail = async (leads: { id: string; website: string }[]): Promise<Record<string, string | null>> => {
+    const response = await fetch(`${API_BASE}/pipeline/serper-email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leads })
     });
     if (!response.ok) {
         const err = await response.json();
-        throw new Error(err.error || 'Gosom email scrape failed');
+        throw new Error(err.error || 'Serper email search failed');
     }
     const data = await response.json();
     return data.results;
 };
+
 
 // Bulk analyze websites (screenshot + PageSpeed + Gemini scoring)
 export const bulkAnalyze = async (leads: { id: string; url: string; name: string }[]): Promise<Record<string, AnalysisResult>> => {

@@ -33,7 +33,8 @@ export interface Business {
   instagram?: string;
   linkedin?: string;
   contactEmail?: string;
-  runningAds?: boolean; // Serper Ads Data
+  runningAds?: boolean; // Serper/HTML Ads Data
+  adTags?: string[]; // Arrays of detected ad scripts (e.g. ['Facebook Pixel'])
 
   // Design Sales Data
   isQualified?: boolean; // True if website is bad

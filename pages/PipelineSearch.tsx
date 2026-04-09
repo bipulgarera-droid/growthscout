@@ -128,9 +128,9 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
             if (analyzeRes[r.id]) {
                 return { 
                     ...r, 
-                    pageSpeedMobile: analyzeRes[r.id].pageSpeedMobile || r.pageSpeedMobile,
-                    pageSpeedDesktop: analyzeRes[r.id].pageSpeedDesktop || r.pageSpeedDesktop,
-                    qualityScore: analyzeRes[r.id].digitalScore || r.qualityScore,
+                    pageSpeedMobile: analyzeRes[r.id].pageSpeed?.mobile?.performance || r.pageSpeedMobile,
+                    pageSpeedDesktop: analyzeRes[r.id].pageSpeed?.desktop?.performance || r.pageSpeedDesktop,
+                    qualityScore: analyzeRes[r.id].overallScore || r.qualityScore,
                     analysisBullets: analyzeRes[r.id].analysisBullets || r.analysisBullets
                 };
             }

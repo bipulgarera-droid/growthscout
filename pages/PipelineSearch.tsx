@@ -196,7 +196,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     // Add force recheck option
     const forceRecheck = window.confirm("Do you want to force re-check ALL websites? (Click OK to recheck all, including those that already have emails. Click Cancel to only check missing emails.)");
     
-    setStatusText('Running Gemini Fallback Email Search...');
+    setStatusText('Running Jina Website Email Scraper...');
     setIsScraping(true);
     try {
         const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'lawnlove.com', 'thumbtack.com', 'angi.com'];
@@ -230,7 +230,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
             });
         }
         
-        setStatusText('Gemini Email Fallback complete.');
+        setStatusText('Jina Email Scrape complete.');
     } catch (e: any) {
         console.error(e);
         setStatusText('Email fallback failed: ' + e.message);
@@ -336,7 +336,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                     <ExternalLink size={14} /> Check Google Ads (Serper)
                 </button>
                 <button onClick={handleFallbackEmail} disabled={isScraping || results.length === 0} className="bg-cyan-50 text-cyan-600 px-3 py-1.5 rounded-lg border border-cyan-200 text-xs font-medium hover:bg-cyan-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
-                    <Mail size={14} /> Fallback Email Search (Gemini Context)
+                    <Mail size={14} /> Fallback Email Search (Jina Scraper)
                 </button>
             </div>
         </div>

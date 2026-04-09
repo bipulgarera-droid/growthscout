@@ -375,7 +375,7 @@ export const bulkAnalyze = async (leads: { id: string; url: string; name: string
 };
 
 // Extractor logic for Email extraction via Deterministic Jina AI Scraping + Pure Regex Extraction
-export const extractEmailGemini = async (websiteUrl: string): Promise<string | null> => {
+export const extractEmailJina = async (websiteUrl: string): Promise<string | null> => {
 
     // Skip URLs that are social media or directory sites
     const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'lawnlove.com', 'thumbtack.com', 'angi.com', 'homeadvisor.com', 'houzz.com'];

@@ -156,7 +156,7 @@ router.post('/api/pipeline/analyze', async (req, res) => {
 
 import { findFounderInfo, isRunningGoogleAds } from '../services/serper.js';
 import { scrapeContactInfoApify } from '../services/apifyEnrichment.js';
-import { extractEmailGemini } from '../services/analysis.js';
+import { extractEmailJina } from '../services/analysis.js';
 
 // Specific endpoint: Trigger Google Ads check
 router.post('/api/pipeline/check-ads', async (req, res) => {
@@ -197,7 +197,7 @@ router.post('/api/pipeline/fallback-email', async (req, res) => {
                     results[lead.id] = null;
                     continue;
                 }
-                const email = await extractEmailGemini(lead.website);
+                const email = await extractEmailJina(lead.website);
                 results[lead.id] = email;
             } catch (err) {
                 console.error(`Fallback email failed for ${lead.website}:`, err);

@@ -121,13 +121,18 @@ router.post('/api/leads/:id/upload-logo', async (req, res) => {
             return res.status(400).json({ error: 'Either logoUrl or logoData is required' });
         }
 
-        // Update local Supabase leads table
-        const { error: dbError } = await supabase
-            .from('leads')
-            .update({ logo_url: finalUrl })
-            .eq('id', leadId);
+        // Update local Supabase leads table only if leadId is a valid UUID
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (uuidRegex.test(leadId)) {
+            const { error: dbError } = await supabase
+                .from('leads')
+                .update({ logo_url: finalUrl })
+                .eq('id', leadId);
 
-        if (dbError) throw dbError;
+            if (dbError) throw dbError;
+        } else {
+            console.log(`[Logo Upload] Skipped DB update because ID is temporary: ${leadId}`);
+        }
 
         res.json({ success: true, logoUrl: finalUrl, message: 'Logo URL updated successfully. Re-generate website to apply.' });
     } catch (error: any) {

@@ -374,23 +374,6 @@ export const bulkAnalyze = async (leads: { id: string; url: string; name: string
     return results;
 };
 
-// Helper: Verify email formatting and domain MX records
-const isValidEmailAddress = async (email: string): Promise<boolean> => {
-    if (!email || !email.includes('@') || !email.includes('.')) return false;
-    
-    // Strict format check
-    const formatRegex = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}$/;
-    if (!formatRegex.test(email)) return false;
-
-    try {
-        const domain = email.split('@')[1];
-        const records = await resolveMx(domain);
-        return records && records.length > 0;
-    } catch {
-        return false;
-    }
-};
-
 // Extractor logic for Email extraction via Deterministic Jina AI Scraping + Pure Regex Extraction
 export const extractEmailGemini = async (websiteUrl: string): Promise<string | null> => {
 
@@ -445,17 +428,9 @@ export const extractEmailGemini = async (websiteUrl: string): Promise<string | n
 
         if (uniqueEmails.length === 0) return null;
 
-        // Verify through DNS MX records ensuring the email domain actually exists
-        for (const email of uniqueEmails) {
-            const isValid = await isValidEmailAddress(email);
-            if (isValid) {
-                console.log(`[Email Fallback] Successfully verified scraped email: ${email}`);
-                return email; // Return the first valid one
-            }
-        }
-        
-        console.log(`[Email Fallback] All scraped emails failed MX verification for ${websiteUrl}`);
-        return null;
+        // Just return the first matched and cleaned email without external DNS verification
+        console.log(`[Email Fallback] Successfully scraped regex email: ${uniqueEmails[0]}`);
+        return uniqueEmails[0];
         
     } catch (e) {
         console.error(`[Email Fallback] Error on ${websiteUrl}:`, e);

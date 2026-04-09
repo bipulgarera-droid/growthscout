@@ -192,12 +192,16 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
 
   const handleFallbackEmail = async () => {
     if (results.length === 0) return;
+    
+    // Add force recheck option
+    const forceRecheck = window.confirm("Do you want to force re-check ALL websites? (Click OK to recheck all, including those that already have emails. Click Cancel to only check missing emails.)");
+    
     setStatusText('Running Gemini Fallback Email Search...');
     setIsScraping(true);
     try {
         const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'lawnlove.com', 'thumbtack.com', 'angi.com'];
         const payload = results
-            .filter(r => !r.contactEmail && !r.email && r.website)
+            .filter(r => (forceRecheck ? true : (!r.contactEmail && !r.email)) && r.website)
             .filter(r => !junkDomains.some(d => r.website?.includes(d)))
             .map(r => ({ id: r.id, website: r.website }));
         if (payload.length === 0) {

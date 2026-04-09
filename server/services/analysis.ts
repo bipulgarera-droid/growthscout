@@ -392,9 +392,8 @@ export const extractEmailGemini = async (websiteUrl: string): Promise<string | n
 
     try {
         console.log(`[Gemini Fallback] Fetching live page: ${websiteUrl}...`);
-        // gemini-2.5-flash-preview supports the url_context tool
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:generateContent?key=${GEMINI_API_KEY}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -402,7 +401,6 @@ export const extractEmailGemini = async (websiteUrl: string): Promise<string | n
                     contents: [{
                         parts: [{ text: prompt }]
                     }],
-                    tools: [{ url_context: {} }],
                     generationConfig: { temperature: 0.0, maxOutputTokens: 100 }
                 })
             }
@@ -415,13 +413,6 @@ export const extractEmailGemini = async (websiteUrl: string): Promise<string | n
         }
 
         const data = await response.json();
-        
-        // Log which URLs Gemini actually fetched (verification)
-        const urlMetadata = data.candidates?.[0]?.urlContextMetadata;
-        if (urlMetadata) {
-            console.log(`[Gemini Fallback] URLs fetched:`, JSON.stringify(urlMetadata));
-        }
-
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
         const cleanText = text.trim();
         

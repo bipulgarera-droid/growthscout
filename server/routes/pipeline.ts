@@ -156,7 +156,7 @@ router.post('/api/pipeline/analyze', async (req, res) => {
 
 import { findFounderInfo, isRunningGoogleAds } from '../services/serper.js';
 import { scrapeContactInfoApify } from '../services/apifyEnrichment.js';
-import { extractEmailJina } from '../services/analysis.js';
+import { extractEmailJina, detectAdsFromHTML } from '../services/analysis.js';
 
 // Specific endpoint: Trigger Google Ads check
 router.post('/api/pipeline/check-ads', async (req, res) => {
@@ -210,6 +210,35 @@ router.post('/api/pipeline/fallback-email', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
+// Deterministic Ad Detection: Scan raw HTML for Google Ads / GTM / AdSense / FB Pixel tags
+router.post('/api/pipeline/detect-ads-html', async (req, res) => {
+    try {
+        const { leads } = req.body;
+        if (!leads || !Array.isArray(leads)) {
+            return res.status(400).json({ error: 'leads array required' });
+        }
+
+        const results: Record<string, { runningAds: boolean; adTags: string[] }> = {};
+        for (const lead of leads) {
+            try {
+                if (!lead.website) {
+                    results[lead.id] = { runningAds: false, adTags: [] };
+                    continue;
+                }
+                results[lead.id] = await detectAdsFromHTML(lead.website);
+            } catch (err) {
+                console.error(`HTML ad detection failed for ${lead.website}:`, err);
+                results[lead.id] = { runningAds: false, adTags: [] };
+            }
+        }
+        res.json({ success: true, results });
+    } catch (error: any) {
+        console.error('HTML Ad Detection Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 
 import { generateAllMessages, LeadOutreachInput } from '../services/outreach.js';
 

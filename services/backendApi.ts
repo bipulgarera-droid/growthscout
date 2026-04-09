@@ -146,7 +146,22 @@ export const bulkCheckAds = async (leads: { id: string; name: string; city: stri
     return data.results;
 };
 
-// Bulk fallback email search (Gemini URL Context)
+// Deterministic Ad Detection via raw HTML tag scanning (Google Ads / GTM / AdSense / FB Pixel)
+export const bulkDetectAdsHTML = async (leads: { id: string; website: string }[]): Promise<Record<string, { runningAds: boolean; adTags: string[] }>> => {
+    const response = await fetch(`${API_BASE}/pipeline/detect-ads-html`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leads })
+    });
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'HTML ad detection failed');
+    }
+    const data = await response.json();
+    return data.results;
+};
+
+// Bulk fallback email search (Jina Scraper)
 export const bulkFallbackEmail = async (leads: { id: string; website: string }[]): Promise<Record<string, string | null>> => {
     const response = await fetch(`${API_BASE}/pipeline/fallback-email`, {
         method: 'POST',

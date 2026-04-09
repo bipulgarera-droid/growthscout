@@ -392,17 +392,15 @@ export const extractEmailJina = async (websiteUrl: string): Promise<string | nul
             // Ensure URL doesn't end with slash securely for appending
             const baseUrl = websiteUrl.endsWith('/') ? websiteUrl.slice(0, -1) : websiteUrl;
             
-            // Simultaneously scrape the homepage and the standard /contact page (where most service local businesses hide emails)
-            const [homeRes, contactRes] = await Promise.allSettled([
-                fetch(`https://r.jina.ai/${baseUrl}`),
-                fetch(`https://r.jina.ai/${baseUrl}/contact`)
-            ]);
+            // Simultaneously scrape the homepage and common contact subpages where local businesses hide emails
+            const contactPaths = ['', '/contact', '/contact-us', '/about', '/about-us'];
+            const fetches = contactPaths.map(p => fetch(`https://r.jina.ai/${baseUrl}${p}`));
+            const results = await Promise.allSettled(fetches);
 
-            if (homeRes.status === 'fulfilled' && homeRes.value.ok) {
-                pageContent += await homeRes.value.text();
-            }
-            if (contactRes.status === 'fulfilled' && contactRes.value.ok) {
-                pageContent += '\n\n' + await contactRes.value.text();
+            for (const res of results) {
+                if (res.status === 'fulfilled' && res.value.ok) {
+                    pageContent += '\n\n' + await res.value.text();
+                }
             }
         } catch (e) {
             console.error(`[Email Fallback] Jina Scrape failed for ${websiteUrl}:`, e);
@@ -448,3 +446,62 @@ export const extractEmailJina = async (websiteUrl: string): Promise<string | nul
         return null;
     }
 };
+
+// Deterministic Ad Detection via raw HTML script tag scanning
+// Checks for Google Ads conversion tracking, GTM, and AdSense tags
+export const detectAdsFromHTML = async (websiteUrl: string): Promise<{ runningAds: boolean; adTags: string[] }> => {
+    const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com'];
+    if (junkDomains.some(d => websiteUrl.includes(d))) {
+        return { runningAds: false, adTags: [] };
+    }
+
+    try {
+        console.log(`[Ad Detection] Scanning HTML tags on: ${websiteUrl}`);
+        const response = await fetch(websiteUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GrowthScout/1.0)' },
+            redirect: 'follow',
+            signal: AbortSignal.timeout(10000) // 10s timeout
+        });
+
+        if (!response.ok) {
+            console.log(`[Ad Detection] HTTP ${response.status} for ${websiteUrl}`);
+            return { runningAds: false, adTags: [] };
+        }
+
+        const html = await response.text();
+        const detectedTags: string[] = [];
+
+        // Google Ads conversion tracking (AW-XXXXXXXXX)
+        if (/googletagmanager\.com\/gtag\/js\?id=AW-/i.test(html)) {
+            detectedTags.push('Google Ads (gtag AW-)');
+        }
+
+        // Older Google Ads conversion script
+        if (/googleadservices\.com\/pagead\/conversion/i.test(html)) {
+            detectedTags.push('Google Ads (legacy conversion.js)');
+        }
+
+        // Google Tag Manager (often contains Ads tags)
+        if (/googletagmanager\.com\/gtm\.js\?id=GTM-/i.test(html)) {
+            detectedTags.push('Google Tag Manager (GTM)');
+        }
+
+        // Google AdSense (display ads ON their site)
+        if (/googlesyndication\.com\/pagead\/js\/adsbygoogle/i.test(html)) {
+            detectedTags.push('Google AdSense');
+        }
+
+        // Facebook Pixel (bonus — indicates they run FB ads)
+        if (/connect\.facebook\.net\/.*\/fbevents\.js/i.test(html)) {
+            detectedTags.push('Facebook Pixel');
+        }
+
+        const runningAds = detectedTags.length > 0;
+        console.log(`[Ad Detection] ${websiteUrl}: ${runningAds ? detectedTags.join(', ') : 'No ad tags found'}`);
+        return { runningAds, adTags: detectedTags };
+    } catch (e) {
+        console.error(`[Ad Detection] Error scanning ${websiteUrl}:`, e);
+        return { runningAds: false, adTags: [] };
+    }
+};
+

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Search, Loader2, Play, Building2, MapPin, Database, Filter, ExternalLink, Activity, Mail, Check, RefreshCw, Smartphone, X, User, Globe, ChevronDown } from 'lucide-react';
 import { Business } from '../types';
-import { generateWebsite, uploadLogo, enrichBusiness, bulkEnrich, bulkAnalyze, bulkCheckAds, bulkFallbackEmail, syncBusinessesToDB } from '../services/backendApi';
+import { generateWebsite, uploadLogo, enrichBusiness, bulkEnrich, bulkAnalyze, bulkCheckAds, bulkDetectAdsHTML, bulkFallbackEmail, syncBusinessesToDB } from '../services/backendApi';
 
 export default function PipelineSearch({ initialResults = [], projectId, onUpdateResult }: { initialResults?: any[], projectId?: string, onUpdateResult?: (id: string, data: Partial<Business>) => void }) {
   const [service, setService] = useState('');
@@ -190,6 +190,55 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     }
   };
 
+  // Deterministic HTML-based Ad Detection (checks raw script tags)
+  const handleDetectAdsHTML = async () => {
+    if (results.length === 0) return;
+    setStatusText('Scanning websites for ad tracking tags (HTML)...');
+    setIsScraping(true);
+    try {
+        const payload = results
+            .filter(r => r.website)
+            .map(r => ({ id: r.id, website: r.website }));
+        
+        if (payload.length === 0) {
+            setStatusText('No websites to scan.');
+            setIsScraping(false);
+            return;
+        }
+
+        const adsData = await bulkDetectAdsHTML(payload);
+        
+        const newResults = results.map(r => {
+            if (adsData[r.id]) {
+                return { 
+                    ...r, 
+                    runningAds: adsData[r.id].runningAds,
+                    adTags: adsData[r.id].adTags
+                };
+            }
+            return r;
+        });
+        setResults(newResults);
+        
+        await syncBusinessesToDB(newResults);
+        if (onUpdateResult) {
+            newResults.forEach(nr => {
+                if (adsData[nr.id]) {
+                    onUpdateResult(nr.id, { runningAds: adsData[nr.id].runningAds });
+                }
+            });
+        }
+        
+        const detected = Object.values(adsData).filter(v => v.runningAds).length;
+        setStatusText(`HTML Ad Scan complete. ${detected}/${payload.length} running ads detected.`);
+    } catch (e: any) {
+        console.error(e);
+        setStatusText('HTML Ad scan failed: ' + e.message);
+    } finally {
+        setIsScraping(false);
+    }
+  };
+
   const handleFallbackEmail = async () => {
     if (results.length === 0) return;
     
@@ -347,6 +396,9 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                 </button>
                 <button onClick={handleCheckAds} disabled={isScraping || results.length === 0} className="bg-orange-50 text-orange-600 px-3 py-1.5 rounded-lg border border-orange-200 text-xs font-medium hover:bg-orange-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
                     <ExternalLink size={14} /> Check Google Ads (Serper)
+                </button>
+                <button onClick={handleDetectAdsHTML} disabled={isScraping || results.length === 0} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-200 text-xs font-medium hover:bg-red-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
+                    <Search size={14} /> Detect Ads (HTML Scan)
                 </button>
                 <button onClick={handleFallbackEmail} disabled={isScraping || results.length === 0} className="bg-cyan-50 text-cyan-600 px-3 py-1.5 rounded-lg border border-cyan-200 text-xs font-medium hover:bg-cyan-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
                     <Mail size={14} /> Fallback Email Search (Jina Scraper)

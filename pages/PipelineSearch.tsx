@@ -326,8 +326,12 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     setIsScraping(true);
     try {
         // If selection exists, only process selected. Otherwise, only missing emails.
+        // IMPORTANT: selectedIds stores 'place_id || name' keys (matching the checkbox row key formula)
         const payload = results
-            .filter(r => hasSelection ? selectedIds.has(r.id) : (!r.contactEmail && !r.email))
+            .filter(r => {
+                const rowKey = (r as any).place_id || r.name;
+                return hasSelection ? selectedIds.has(rowKey) : (!r.contactEmail && !r.email);
+            })
             .filter(r => r.name)
             .map(r => ({ id: r.id, name: r.name, address: r.address }));
             

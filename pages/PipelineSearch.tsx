@@ -213,11 +213,17 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
         const emailData = await bulkFallbackEmail(payload);
         
         const newResults = results.map(r => {
-            if (emailData[r.id] && emailData[r.id] !== 'NULL') {
-                return { 
-                    ...r, 
-                    contactEmail: emailData[r.id]
-                };
+            // Did we check this specific business in this run?
+            const wasChecked = payload.some(p => p.id === r.id);
+            
+            if (wasChecked) {
+                if (emailData[r.id] && emailData[r.id] !== 'NULL') {
+                    // Successfully found a new real email
+                    return { ...r, contactEmail: emailData[r.id] };
+                } else if (forceRecheck) {
+                    // We force checked it, and it returned NULL. We must wipe the old hallucinated email!
+                    return { ...r, contactEmail: undefined };
+                }
             }
             return r;
         });
@@ -226,7 +232,14 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
         await syncBusinessesToDB(newResults);
         if (onUpdateResult) {
             newResults.forEach(nr => {
-                if (emailData[nr.id] && emailData[nr.id] !== 'NULL') onUpdateResult(nr.id, { contactEmail: emailData[nr.id] });
+                const wasChecked = payload.some(p => p.id === nr.id);
+                if (wasChecked) {
+                    if (emailData[nr.id] && emailData[nr.id] !== 'NULL') {
+                        onUpdateResult(nr.id, { contactEmail: emailData[nr.id] });
+                    } else if (forceRecheck) {
+                        onUpdateResult(nr.id, { contactEmail: undefined });
+                    }
+                }
             });
         }
         

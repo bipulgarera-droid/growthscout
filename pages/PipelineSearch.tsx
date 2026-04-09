@@ -314,60 +314,53 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
   const handleGosomEmail = async () => {
     if (results.length === 0) return;
     
-    const forceRecheck = window.confirm("Run Gosom Deep Email Search? It queries Google Maps for each business name + city and extracts emails. Click OK to recheck all. Click Cancel to only check missing emails.");
+    // If contacts are selected, only process those. Otherwise ask if they want all-missing.
+    const hasSelection = selectedIds.size > 0;
     
+    if (!hasSelection) {
+        const confirmed = window.confirm(`No contacts selected. Run Gosom Email Search on all ${results.filter(r => !r.contactEmail && !r.email).length} contacts with missing emails?`);
+        if (!confirmed) return;
+    }
+
     setStatusText('Running Gosom Email Search via Google Maps...');
     setIsScraping(true);
     try {
+        // If selection exists, only process selected. Otherwise, only missing emails.
         const payload = results
-            .filter(r => (forceRecheck ? true : (!r.contactEmail && !r.email)) && r.name)
+            .filter(r => hasSelection ? selectedIds.has(r.id) : (!r.contactEmail && !r.email))
+            .filter(r => r.name)
             .map(r => ({ id: r.id, name: r.name, address: r.address }));
             
         if (payload.length === 0) {
-            setStatusText('No missing emails found.');
+            setStatusText('No contacts to process.');
             setIsScraping(false);
             return;
         }
 
+        setStatusText(`Running Gosom on ${payload.length} contact(s)...`);
         const emailData = await bulkGosomEmail(payload);
 
-        
         const newResults = results.map(r => {
             const wasChecked = payload.some(p => p.id === r.id);
-            if (wasChecked) {
-                if (emailData[r.id] && emailData[r.id] !== 'NULL') {
-                    return { ...r, contactEmail: emailData[r.id] };
-                } else if (forceRecheck) {
-                    return { ...r, contactEmail: null as any };
-                }
+            if (wasChecked && emailData[r.id] && emailData[r.id] !== 'NULL') {
+                return { ...r, contactEmail: emailData[r.id] };
             }
             return r;
         });
         setResults(newResults);
         
-        const wipedIds = payload
-            .filter(p => forceRecheck && (!emailData[p.id] || emailData[p.id] === 'NULL'))
-            .map(p => p.id);
-        
-        await Promise.allSettled([
-            syncBusinessesToDB(newResults),
-            ...wipedIds.map(id => updateBusinessInDB(id, { contactEmail: null as any }))
-        ]);
+        await syncBusinessesToDB(newResults);
 
         if (onUpdateResult) {
             newResults.forEach(nr => {
-                const wasChecked = payload.some(p => p.id === nr.id);
-                if (wasChecked) {
-                    if (emailData[nr.id] && emailData[nr.id] !== 'NULL') {
-                        onUpdateResult(nr.id, { contactEmail: emailData[nr.id] });
-                    } else if (forceRecheck) {
-                        onUpdateResult(nr.id, { contactEmail: null as any });
-                    }
+                if (payload.some(p => p.id === nr.id) && emailData[nr.id] && emailData[nr.id] !== 'NULL') {
+                    onUpdateResult(nr.id, { contactEmail: emailData[nr.id] });
                 }
             });
         }
         
-        setStatusText('Deep Gosom run complete.');
+        const found = payload.filter(p => emailData[p.id] && emailData[p.id] !== 'NULL').length;
+        setStatusText(`Gosom complete. Found ${found}/${payload.length} emails.`);
     } catch (e: any) {
         console.error(e);
         setStatusText('Gosom Scrape failed: ' + e.message);
@@ -375,6 +368,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
         setIsScraping(false);
     }
   };
+
 
   const filteredResults = useMemo(() => {
     return results.filter(r => {

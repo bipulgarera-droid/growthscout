@@ -242,24 +242,36 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
   const handleFallbackEmail = async () => {
     if (results.length === 0) return;
     
-    // Add force recheck option
-    const forceRecheck = window.confirm("Do you want to force re-check ALL websites? (Click OK to recheck all, including those that already have emails. Click Cancel to only check missing emails.)");
+    const hasSelection = selectedIds.size > 0;
+    
+    // Build prompt based on context
+    const promptMsg = hasSelection
+        ? `Run Jina Email Scraper on ${selectedIds.size} selected contact(s)? Click OK to force-recheck even if they already have emails. Click Cancel to skip ones that already have emails.`
+        : `Do you want to force re-check ALL websites? (Click OK to recheck all, including those that already have emails. Click Cancel to only check missing emails.)`;
+    const forceRecheck = window.confirm(promptMsg);
     
     setStatusText('Running Jina Website Email Scraper...');
     setIsScraping(true);
     try {
         const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'lawnlove.com', 'thumbtack.com', 'angi.com'];
         const payload = results
-            .filter(r => (forceRecheck ? true : (!r.contactEmail && !r.email)) && r.website)
+            .filter(r => {
+                const rowKey = (r as any).place_id || r.name;
+                const inSelection = hasSelection ? selectedIds.has(rowKey) : true;
+                const needsEmail = forceRecheck ? true : (!r.contactEmail && !r.email);
+                return inSelection && needsEmail && r.website;
+            })
             .filter(r => !junkDomains.some(d => r.website?.includes(d)))
             .map(r => ({ id: r.id, website: r.website }));
         if (payload.length === 0) {
-            setStatusText('No missing emails with valid websites found.');
+            setStatusText('No contacts to process.');
             setIsScraping(false);
             return;
         }
 
+        setStatusText(`Jina scraping ${payload.length} website(s)...`);
         const emailData = await bulkFallbackEmail(payload);
+
         
         const newResults = results.map(r => {
             // Did we check this specific business in this run?

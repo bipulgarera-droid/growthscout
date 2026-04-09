@@ -389,18 +389,27 @@ export const extractEmailJina = async (websiteUrl: string): Promise<string | nul
         
         let pageContent = '';
         try {
-            // Ensure URL doesn't end with slash securely for appending
-            const baseUrl = websiteUrl.endsWith('/') ? websiteUrl.slice(0, -1) : websiteUrl;
-            
-            // Simultaneously scrape the homepage and common contact subpages where local businesses hide emails
-            const contactPaths = ['', '/contact', '/contact-us', '/about', '/about-us'];
-            const fetches = contactPaths.map(p => fetch(`https://r.jina.ai/${baseUrl}${p}`));
-            const results = await Promise.allSettled(fetches);
+            // Ensure URL doesn't end with slash for clean path appending
+            const rawBase = websiteUrl.endsWith('/') ? websiteUrl.slice(0, -1) : websiteUrl;
+            // Only use base URL without query params for sub-path fetching
+            const urlObj = new URL(rawBase);
+            const cleanBase = urlObj.origin + urlObj.pathname.replace(/\/$/, '');
 
-            for (const res of results) {
-                if (res.status === 'fulfilled' && res.value.ok) {
-                    pageContent += '\n\n' + await res.value.text();
-                }
+            // Try paths SEQUENTIALLY to avoid rate-limiting Jina unauthenticated tier.
+            // Stop early once we've gathered enough content to find an email.
+            const contactPaths = ['', '/contact', '/contact-us', '/about', '/about-us'];
+            for (const p of contactPaths) {
+                try {
+                    const resp = await fetch(`https://r.jina.ai/${cleanBase}${p}`);
+                    if (resp.ok) {
+                        const text = await resp.text();
+                        if (text && text.length > 100) {
+                            pageContent += '\n\n' + text;
+                            // Early exit: if we already have a clear email pattern, stop fetching more pages
+                            if (/[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+/.test(text)) break;
+                        }
+                    }
+                } catch (_) { /* skip failed sub-paths */ }
             }
         } catch (e) {
             console.error(`[Email Fallback] Jina Scrape failed for ${websiteUrl}:`, e);
@@ -408,6 +417,7 @@ export const extractEmailJina = async (websiteUrl: string): Promise<string | nul
 
         if (!pageContent || pageContent.length < 50) {
             console.log(`[Email Fallback] Insufficient text retrieved on ${websiteUrl}.`);
+
             return null;
         }
 

@@ -391,96 +391,74 @@ const isValidEmailAddress = async (email: string): Promise<boolean> => {
     }
 };
 
-// Extractor logic for Email extraction via Deterministic Jina AI Scraping + Gemini Guardrails
+// Extractor logic for Email extraction via Deterministic Jina AI Scraping + Pure Regex Extraction
 export const extractEmailGemini = async (websiteUrl: string): Promise<string | null> => {
-    if (!GEMINI_API_KEY) {
-        console.warn("Missing GEMINI_API_KEY for extractEmailGemini");
-        return null;
-    }
 
-    // Skip URLs that are social media or directory sites — they won't have business emails
+    // Skip URLs that are social media or directory sites
     const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'lawnlove.com', 'thumbtack.com', 'angi.com', 'homeadvisor.com', 'houzz.com'];
     if (junkDomains.some(d => websiteUrl.includes(d))) {
-        console.log(`[Gemini Fallback] Skipping directory/social URL: ${websiteUrl}`);
+        console.log(`[Email Fallback] Skipping directory/social URL: ${websiteUrl}`);
         return null;
     }
 
     try {
-        console.log(`[Gemini Fallback] Scraping website content natively via Jina AI: ${websiteUrl}...`);
+        console.log(`[Email Fallback] Scraping website natively via Jina AI: ${websiteUrl}...`);
         
         let pageContent = '';
         try {
-            // Jina AI converts any URL to heavily optimized pure markdown context
             const jinaResponse = await fetch(`https://r.jina.ai/${websiteUrl}`);
             if (jinaResponse.ok) {
-                // Limit to roughly ~15k characters (so it doesn't blow out Gemini tokens on massive sites)
-                pageContent = (await jinaResponse.text()).substring(0, 15000);
+                pageContent = await jinaResponse.text();
             }
         } catch (e) {
-            console.error(`[Gemini Fallback] Jina Scrape failed softly for ${websiteUrl}:`, e);
+            console.error(`[Email Fallback] Jina Scrape failed for ${websiteUrl}:`, e);
         }
 
         if (!pageContent || pageContent.length < 50) {
-            console.log(`[Gemini Fallback] Insufficient text retrieved to run extraction on ${websiteUrl}.`);
+            console.log(`[Email Fallback] Insufficient text retrieved on ${websiteUrl}.`);
             return null;
         }
 
-        // Strict anti-hallucination prompt
-        const prompt = `
-Fetch this URL content: ${websiteUrl}
-====================
-WEBSITE CONTENT:
-${pageContent}
-====================
+        // Deterministic Regex extraction
+        // Matches typical email formats while avoiding image extensions (e.g. logo.png@2x) and CSS
+        const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi;
+        const matches = pageContent.match(emailRegex);
 
-Look for any email address visible on the page or linked contact page.
-ONLY return an email if you can see it explicitly written on the page text provided.
-Do NOT guess or infer emails from the domain name.
-If you find one, return ONLY the email address.
-If you cannot find one explicitly written inside the markdown content, return exactly: NULL
-`;
+        if (!matches || matches.length === 0) {
+            console.log(`[Email Fallback] No email found via regex on ${websiteUrl}`);
+            return null;
+        }
 
-        const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{
-                        parts: [{ text: prompt }]
-                    }],
-                    generationConfig: { temperature: 0.0, maxOutputTokens: 100 }
-                })
+        // Clean up and filter out false positives (e.g., sentry@..., example.com, wixpress)
+        const uniqueEmails = [...new Set(matches)]
+            .map(e => e.toLowerCase().trim())
+            .filter(e => 
+                !e.includes('sentry') && 
+                !e.includes('example.com') && 
+                !e.includes('wixpress') &&
+                !e.endsWith('.png') && 
+                !e.endsWith('.jpg') && 
+                !e.endsWith('.jpeg') && 
+                !e.endsWith('.gif') &&
+                !e.endsWith('.webp')
+            );
+
+        if (uniqueEmails.length === 0) return null;
+
+        // Verify through DNS MX records ensuring the email domain actually exists
+        for (const email of uniqueEmails) {
+            const isValid = await isValidEmailAddress(email);
+            if (isValid) {
+                console.log(`[Email Fallback] Successfully verified scraped email: ${email}`);
+                return email; // Return the first valid one
             }
-        );
-
-        if (!response.ok) {
-            const errBody = await response.text();
-            console.error(`[Gemini Fallback] API error ${response.status} for ${websiteUrl}: ${errBody}`);
-            return null;
-        }
-
-        const data = await response.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        const cleanText = text.trim();
-        
-        if (!cleanText || cleanText.toUpperCase() === 'NULL' || cleanText.toUpperCase().includes('NULL')) {
-            console.log(`[Gemini Fallback] No email found safely on ${websiteUrl}`);
-            return null;
         }
         
-        // Final sanity check through DNS MX records ensuring the email actually exists
-        const isValid = await isValidEmailAddress(cleanText);
-        if (isValid) {
-            console.log(`[Gemini Fallback] Successfully verified explicitly scraped email: ${cleanText}`);
-            return cleanText;
-        } else {
-            console.log(`[Gemini Fallback] Rejected hallucinated or invalid domain format: ${cleanText}`);
-            return null;
-        }
+        console.log(`[Email Fallback] All scraped emails failed MX verification for ${websiteUrl}`);
+        return null;
         
     } catch (e) {
-        console.error(`[Gemini Fallback] Error on ${websiteUrl}:`, e);
+        console.error(`[Email Fallback] Error on ${websiteUrl}:`, e);
         return null;
     }
 };

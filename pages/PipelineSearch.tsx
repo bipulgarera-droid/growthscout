@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Loader2, Play, Building2, MapPin, Database, Filter, ExternalLink, Activity, Mail, Check, RefreshCw, Smartphone, X, User, Globe, ChevronDown } from 'lucide-react';
+import { Search, Loader2, Play, Building2, MapPin, Database, Filter, ExternalLink, Activity, Mail, Check, RefreshCw, Smartphone, X, User, Globe, ChevronDown, Send } from 'lucide-react';
 import { Business } from '../types';
 import { generateWebsite, uploadLogo, enrichBusiness, bulkEnrich, bulkAnalyze, bulkCheckAds, bulkDetectAdsHTML, bulkFallbackEmail, bulkGosomEmail, syncBusinessesToDB, updateBusinessInDB } from '../services/backendApi';
 
@@ -33,6 +33,13 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
   const [activeTab, setActiveTab] = useState<'contact' | 'website'>('contact');
   const [isModalActionLoading, setIsModalActionLoading] = useState(false);
   const [localHeroPhrases, setLocalHeroPhrases] = useState('');
+
+  // Push to Outreach State
+  const [isOutreachModalOpen, setIsOutreachModalOpen] = useState(false);
+  const [outreachProjects, setOutreachProjects] = useState<{ id: string; name: string }[]>([]);
+  const [selectedOutreachProject, setSelectedOutreachProject] = useState('');
+  const [isPushingToOutreach, setIsPushingToOutreach] = useState(false);
+  const [isLoadingOutreachProjects, setIsLoadingOutreachProjects] = useState(false);
   const [localServices, setLocalServices] = useState('');
   const [logoUploadUrl, setLogoUploadUrl] = useState('');
 
@@ -487,6 +494,24 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                 <button onClick={handleFallbackEmail} disabled={isScraping || results.length === 0} className="bg-cyan-50 text-cyan-600 px-3 py-1.5 rounded-lg border border-cyan-200 text-xs font-medium hover:bg-cyan-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
                     <Mail size={14} /> Fallback Email Search (Jina Scraper)
                 </button>
+                {selectedIds.size > 0 && (
+                  <button
+                    onClick={async () => {
+                      setIsLoadingOutreachProjects(true);
+                      setIsOutreachModalOpen(true);
+                      try {
+                        const res = await fetch('/api/outreach/projects');
+                        const data = await res.json();
+                        if (data.error) { alert('Error loading projects: ' + data.error); setIsOutreachModalOpen(false); return; }
+                        setOutreachProjects(data.projects || []);
+                      } catch (e: any) { alert('Cannot connect to Outreach: ' + e.message); setIsOutreachModalOpen(false); }
+                      finally { setIsLoadingOutreachProjects(false); }
+                    }}
+                    className="bg-orange-500 text-white px-3 py-1.5 rounded-lg border border-orange-600 text-xs font-medium hover:bg-orange-600 flex items-center gap-2 whitespace-nowrap shrink-0 transition-colors"
+                  >
+                    <Send size={14} /> Push to Outreach ({selectedIds.size})
+                  </button>
+                )}
                 <button onClick={handleGosomEmail} disabled={isScraping || results.length === 0} className="bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-lg border border-emerald-200 text-xs font-medium hover:bg-emerald-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
                     <Database size={14} /> Deep Email Scrape (Gosom binary)
                 </button>
@@ -976,6 +1001,87 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                   )}
                 </div>
             </div>
+        </div>
+      )}
+
+      {/* Push to Outreach Modal */}
+      {isOutreachModalOpen && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => !isPushingToOutreach && setIsOutreachModalOpen(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Push to Outreach</h3>
+                <p className="text-sm text-slate-500 mt-1">Send {selectedIds.size} lead(s) to your email outreach pipeline</p>
+              </div>
+              <button onClick={() => !isPushingToOutreach && setIsOutreachModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={24} /></button>
+            </div>
+
+            {isLoadingOutreachProjects ? (
+              <div className="flex items-center justify-center py-8">
+                <RefreshCw className="animate-spin text-brand-600" size={24} />
+                <span className="ml-2 text-slate-600">Loading Outreach projects...</span>
+              </div>
+            ) : outreachProjects.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-slate-500">No projects found in Outreach.</p>
+                <p className="text-sm text-slate-400 mt-1">Create a project in the Outreach app first.</p>
+              </div>
+            ) : (
+              <>
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Select Outreach Project</label>
+                  <select
+                    value={selectedOutreachProject}
+                    onChange={e => setSelectedOutreachProject(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-orange-500 outline-none text-sm"
+                  >
+                    <option value="">Choose a project...</option>
+                    {outreachProjects.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-6">
+                  <p className="text-sm text-orange-800">
+                    <strong>{selectedIds.size}</strong> leads will be imported with status <strong>enriched</strong> — they'll skip enrichment and go straight to icebreaker generation.
+                  </p>
+                </div>
+
+                <div className="flex justify-end gap-3">
+                  <button onClick={() => setIsOutreachModalOpen(false)} disabled={isPushingToOutreach} className="px-4 py-2 text-slate-600 hover:bg-slate-50 rounded-lg font-medium">Cancel</button>
+                  <button
+                    onClick={async () => {
+                      if (!selectedOutreachProject) { alert('Please select an Outreach project'); return; }
+                      // Build leadIds from selectedIds (which stores place_id||name keys) → resolve to DB IDs
+                      const selectedLeadIds = results
+                        .filter(r => selectedIds.has((r as any).place_id || r.name))
+                        .map(r => r.id)
+                        .filter(Boolean);
+                      if (selectedLeadIds.length === 0) return;
+                      setIsPushingToOutreach(true);
+                      try {
+                        const res = await fetch('/api/push-to-outreach', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ leadIds: selectedLeadIds, outreachProjectId: selectedOutreachProject })
+                        });
+                        const data = await res.json();
+                        if (data.error) { alert('Push failed: ' + data.error); }
+                        else { alert(data.message || `Pushed ${data.imported} leads to Outreach!`); setIsOutreachModalOpen(false); setSelectedOutreachProject(''); }
+                      } catch (e: any) { alert('Push to Outreach failed: ' + e.message); }
+                      finally { setIsPushingToOutreach(false); }
+                    }}
+                    disabled={isPushingToOutreach || !selectedOutreachProject}
+                    className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2"
+                  >
+                    {isPushingToOutreach ? <RefreshCw className="animate-spin" size={18} /> : <Send size={18} />}
+                    {isPushingToOutreach ? 'Pushing...' : 'Push Leads'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>

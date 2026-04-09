@@ -389,9 +389,20 @@ export const extractEmailJina = async (websiteUrl: string): Promise<string | nul
         
         let pageContent = '';
         try {
-            const jinaResponse = await fetch(`https://r.jina.ai/${websiteUrl}`);
-            if (jinaResponse.ok) {
-                pageContent = await jinaResponse.text();
+            // Ensure URL doesn't end with slash securely for appending
+            const baseUrl = websiteUrl.endsWith('/') ? websiteUrl.slice(0, -1) : websiteUrl;
+            
+            // Simultaneously scrape the homepage and the standard /contact page (where most service local businesses hide emails)
+            const [homeRes, contactRes] = await Promise.allSettled([
+                fetch(`https://r.jina.ai/${baseUrl}`),
+                fetch(`https://r.jina.ai/${baseUrl}/contact`)
+            ]);
+
+            if (homeRes.status === 'fulfilled' && homeRes.value.ok) {
+                pageContent += await homeRes.value.text();
+            }
+            if (contactRes.status === 'fulfilled' && contactRes.value.ok) {
+                pageContent += '\n\n' + await contactRes.value.text();
             }
         } catch (e) {
             console.error(`[Email Fallback] Jina Scrape failed for ${websiteUrl}:`, e);

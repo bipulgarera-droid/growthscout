@@ -10,16 +10,10 @@ router.get('/api/outreach/projects', async (req, res) => {
     if (!OUTREACH_API_URL) {
         return res.status(500).json({ error: 'OUTREACH_API_URL not configured. Set it in environment variables.' });
     }
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-        return res.status(401).json({ error: 'Missing Authorization header in request' });
-    }
     try {
-        const response = await fetch(`${OUTREACH_API_URL}/api/projects`, {
-            headers: { 'Authorization': authHeader }
-        });
+        const response = await fetch(`${OUTREACH_API_URL}/api/projects`);
         const data = await response.json();
-        res.status(response.status).json(data);
+        res.json(data);
     } catch (error: any) {
         console.error('Outreach Projects Fetch Error:', error);
         res.status(500).json({ error: `Cannot reach Outreach app: ${error.message}` });
@@ -132,10 +126,7 @@ router.post('/api/push-to-outreach', async (req, res) => {
         // POST to Outreach's import endpoint
         const response = await fetch(`${OUTREACH_API_URL}/api/import-leads`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': req.headers.authorization || ''
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 project_id: outreachProjectId,
                 leads: mappedLeads

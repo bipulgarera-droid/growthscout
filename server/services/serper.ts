@@ -490,15 +490,17 @@ export const serperEmailByNameAndLocation = async (name: string, location?: stri
     try {
         const cleanName = name.replace(/["']/g, '');
         
-        // Extract city from address: "8601 FM 969, Austin, TX 78724" → "Austin"
-        // Split by comma and walk through segments until we find one that looks like a city (no digits)
+        // Google Maps addresses follow: "Street, City, State ZIP, Country"
+        // So city is reliably 3rd from the end (parts[length-3])
         let cleanLoc = '';
         if (location) {
-            const parts = location.split(',').map(p => p.trim());
-            // Try parts[1] (city), fallback to parts[0]
-            const city = parts.find((p, i) => i > 0 && !/\d/.test(p) && p.length > 1) 
-                      || parts[0];
-            cleanLoc = city.replace(/["']/g, '').replace(/\s+[A-Z]{2}\s*\d*$/,'').trim();
+            const parts = location.split(',').map(p => p.trim()).filter(Boolean);
+            if (parts.length >= 3) {
+                // e.g. ["8601 FM 969", "Austin", "TX 78724", "USA"] → parts[-3] = "Austin"
+                cleanLoc = parts[parts.length - 3].replace(/["']/g, '').trim();
+            } else if (parts.length > 0) {
+                cleanLoc = parts[0].replace(/["']/g, '').trim();
+            }
         }
         
         let query = `"${cleanName}" email`;

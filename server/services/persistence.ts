@@ -331,28 +331,43 @@ export const loadAllBusinesses = async (projectId?: string): Promise<Business[]>
 
     console.log(`[Persistence] Loading businesses from Supabase (Project ID: ${projectId || 'ALL'})...`);
 
-    let url = `${SUPABASE_URL}/rest/v1/leads?select=*&order=created_at.desc&limit=100000`;
-    if (projectId) {
-        url += `&project_id=eq.${projectId}`;
-    }
+    let allRows: LeadRow[] = [];
+    let offset = 0;
+    const limit = 1000;
+    let hasMore = true;
 
-    const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-            'apikey': SUPABASE_KEY,
-            'Authorization': `Bearer ${SUPABASE_KEY}`,
-            'Content-Type': 'application/json'
+    while (hasMore) {
+        let url = `${SUPABASE_URL}/rest/v1/leads?select=*&order=created_at.desc&limit=${limit}&offset=${offset}`;
+        if (projectId) {
+            url += `&project_id=eq.${projectId}`;
         }
-    });
 
-    if (!response.ok) {
-        throw new Error(await response.text());
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'apikey': SUPABASE_KEY,
+                'Authorization': `Bearer ${SUPABASE_KEY}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(await response.text());
+        }
+
+        const rows: LeadRow[] = await response.json();
+        allRows.push(...rows);
+
+        if (rows.length < limit) {
+            hasMore = false;
+        } else {
+            offset += limit;
+        }
     }
 
-    const rows: LeadRow[] = await response.json();
-    const businesses = rows.map(rowToBusiness);
+    const businesses = allRows.map(rowToBusiness);
 
-    console.log(`[Persistence] ✅ Loaded ${businesses.length} businesses from Supabase`);
+    console.log(`[Persistence] ✅ Loaded ${businesses.length} businesses from Supabase across ${Math.ceil(offset/limit) + 1} pages`);
     return businesses;
 };
 

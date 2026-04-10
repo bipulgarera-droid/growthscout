@@ -488,7 +488,14 @@ export const serperEmailByNameAndLocation = async (name: string, location?: stri
     if (!SERPER_API_KEY) return null;
 
     try {
-        const cleanName = name.replace(/["']/g, '');
+        // Strip quotes and common legal suffixes before wrapping in quotes
+        // e.g. "Whittier Lawn Care LLC" → "Whittier Lawn Care"
+        const LEGAL_SUFFIXES = /\b(LLC|LLP|LP|PLLC|Inc\.?|Corp\.?|Co\.?|Ltd\.?|Company|Group|Holdings|Services|Solutions|Enterprises?|Associates?|Partners?|& Associates?)\b\.?$/i;
+        const cleanName = name
+            .replace(/["']/g, '')
+            .replace(LEGAL_SUFFIXES, '')
+            .replace(/[,\s]+$/, '')  // trailing commas/spaces
+            .trim();
         
         // Google Maps addresses follow: "Street, City, State ZIP, Country"
         // So city is reliably 3rd from the end (parts[length-3])

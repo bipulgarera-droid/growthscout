@@ -159,7 +159,7 @@ const businessToRow = (b: Business): Partial<LeadRow> => {
         below_fold_screenshot: b.belowFoldScreenshot || null,
         screenshots: b.screenshots || null,
         preview_url: b.previewSiteUrl || null,
-        audit_data: { ...(b.auditResult || {}), running_ads: b.runningAds ?? null },
+        audit_data: { ...(b.auditResult || {}), running_ads: b.runningAds ?? null, serper_searched: b.serperSearched ?? null },
         pagespeed_mobile: b.pageSpeedMobile || null,
         pagespeed_desktop: b.pageSpeedDesktop || null,
         analysis_bullets: b.analysisBullets || null,
@@ -216,6 +216,7 @@ const rowToBusiness = (r: LeadRow): Business => ({
     previewSiteUrl: r.preview_url || undefined,
     auditResult: r.audit_data || undefined,
     runningAds: r.audit_data?.running_ads ?? undefined,
+    serperSearched: r.audit_data?.serper_searched ?? false,
     pageSpeedMobile: r.pagespeed_mobile || undefined,
     pageSpeedDesktop: r.pagespeed_desktop || undefined,
     analysisBullets: r.analysis_bullets || undefined,
@@ -376,6 +377,11 @@ export const updateBusinessField = async (id: string, updates: Partial<Business>
     if (updates.instagram !== undefined) rowUpdates.instagram = updates.instagram;
     if (updates.linkedin !== undefined) rowUpdates.linkedin = updates.linkedin;
     if (updates.contactEmail !== undefined) rowUpdates.contact_email = updates.contactEmail;
+    if (updates.serperSearched !== undefined) {
+        // Merge serper_searched into existing audit_data JSONB
+        const existing = (await supabase.from('leads').select('audit_data').eq('id', id).single())?.data?.audit_data || {};
+        rowUpdates.audit_data = { ...existing, serper_searched: updates.serperSearched };
+    }
     if (updates.founderName !== undefined) rowUpdates.founder_name = updates.founderName;
     if (updates.whatsappVerified !== undefined) rowUpdates.whatsapp_verified = updates.whatsappVerified;
     if (updates.isContacted !== undefined) rowUpdates.is_contacted = updates.isContacted;

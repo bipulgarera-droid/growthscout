@@ -337,7 +337,8 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     const hasSelection = selectedIds.size > 0;
     
     if (!hasSelection) {
-        const confirmed = window.confirm(`Run Serper Email Search on all ${results.filter(r => !r.contactEmail && !r.email && r.website).length} contacts with missing emails?`);
+        const eligible = results.filter(r => !r.contactEmail && !r.email && r.website && !r.serperSearched).length;
+        const confirmed = window.confirm(`Run Serper Email Search on ${eligible} contacts with missing emails (already-searched contacts will be skipped)?`);
         if (!confirmed) return;
     }
 
@@ -350,13 +351,17 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                 const rowKey = (r as any).place_id || r.name;
                 const inSelection = hasSelection ? selectedIds.has(rowKey) : true;
                 const needsEmail = !r.contactEmail && !r.email;
-                return inSelection && needsEmail && r.website;
+                // ALWAYS skip contacts already searched — never re-spend Serper credits
+                const notAlreadySearched = !r.serperSearched;
+                return inSelection && needsEmail && notAlreadySearched && r.website;
             })
             .filter(r => !junkDomains.some(d => r.website?.includes(d)))
             .map(r => ({ id: r.id, website: r.website! }));
 
         if (payload.length === 0) {
-            setStatusText('No contacts to process.');
+            setStatusText(hasSelection
+                ? 'All selected contacts have already been searched via Serper.'
+                : 'No new contacts to process (all already searched or no website).');
             setIsScraping(false);
             return;
         }
@@ -364,20 +369,20 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
         setStatusText(`Serper searching ${payload.length} domain(s)...`);
         const emailData = await bulkSerperEmail(payload);
 
+        // Mark all processed contacts as serperSearched:true and apply found emails
         const newResults = results.map(r => {
             const wasChecked = payload.some(p => p.id === r.id);
-            if (wasChecked && emailData[r.id] && emailData[r.id] !== 'NULL') {
-                return { ...r, contactEmail: emailData[r.id] };
-            }
-            return r;
+            if (!wasChecked) return r;
+            const foundEmail = emailData[r.id] && emailData[r.id] !== 'NULL' ? emailData[r.id] : undefined;
+            return { ...r, serperSearched: true, ...(foundEmail ? { contactEmail: foundEmail } : {}) };
         });
         setResults(newResults);
         await syncBusinessesToDB(newResults);
 
         if (onUpdateResult) {
             newResults.forEach(nr => {
-                if (payload.some(p => p.id === nr.id) && emailData[nr.id] && emailData[nr.id] !== 'NULL') {
-                    onUpdateResult(nr.id, { contactEmail: emailData[nr.id] });
+                if (payload.some(p => p.id === nr.id)) {
+                    onUpdateResult(nr.id, { serperSearched: true, ...(nr.contactEmail ? { contactEmail: nr.contactEmail } : {}) });
                 }
             });
         }
@@ -401,8 +406,8 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
         if (filterAds === 'yes' && !r.ads) return false;
         if (filterAds === 'no' && r.ads) return false;
 
-        if (filterEmail === 'yes' && !r.email) return false;
-        if (filterEmail === 'no' && r.email) return false;
+        if (filterEmail === 'yes' && !(r.contactEmail || r.email)) return false;
+        if (filterEmail === 'no' && (r.contactEmail || r.email)) return false;
         
         if (filterPhone === 'yes' && !r.phone) return false;
         if (filterPhone === 'no' && r.phone) return false;

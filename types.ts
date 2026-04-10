@@ -33,6 +33,7 @@ export interface Business {
   instagram?: string;
   linkedin?: string;
   contactEmail?: string;
+  serperSearched?: boolean; // True once the contact has been through Serper email search (prevents re-spending credits)
   runningAds?: boolean; // Serper/HTML Ads Data
   adTags?: string[]; // Arrays of detected ad scripts (e.g. ['Facebook Pixel'])
 

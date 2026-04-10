@@ -116,6 +116,9 @@ router.post('/api/push-to-outreach', async (req, res) => {
                     search_location: lead.search_location,
                     category: lead.category,
                     niche: lead.category,
+                    // If the email was found via Serper (Google indexed it), it's already OSINT-verified.
+                    // QuickReach's send_emails.py reads this flag to skip redundant OSINT on risky contacts.
+                    ...(lead.audit_data?.serper_searched ? { serper_verified: true } : {}),
                 }
             };
         });

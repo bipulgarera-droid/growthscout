@@ -192,10 +192,10 @@ export async function runScrapingPipeline(service: string, city: string, targetC
                                         website: record.website,
                                         email: record.emails ? record.emails.split(',')[0] : null,
                                         ads: false,
-                                        score: parseFloat(record.rating) || 0,
+                                        score: parseFloat(record.review_rating) || 0,   // gosom: review_rating
                                         address: record.address || record.full_address,
                                         niche: record.main_category || record.category,
-                                        reviews: parseInt(record.reviews || record.reviews_count) || 0,
+                                        reviews: parseInt(record.review_count) || 0,    // gosom: review_count
                                         searchLocation: city  // Always store the city used for this scrape
                                     });
                                 }

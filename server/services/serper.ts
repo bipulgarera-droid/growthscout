@@ -479,3 +479,71 @@ export const serperEmailByDomain = async (websiteUrl: string): Promise<string | 
     }
 };
 
+/**
+ * Find email for a business with NO website by searching Google for: "business name" email "city"
+ * e.g. "Carrate Landscaping" email "Austin"
+ * Extracts emails from snippets returned by Serper.
+ */
+export const serperEmailByNameAndLocation = async (name: string, location?: string): Promise<string | null> => {
+    if (!SERPER_API_KEY) return null;
+
+    try {
+        const cleanName = name.replace(/["']/g, '');
+        const cleanLoc = location ? location.split(',')[0].replace(/["']/g, '').trim() : '';
+        
+        let query = `"${cleanName}" email`;
+        if (cleanLoc) {
+            query += ` "${cleanLoc}"`;
+        }
+        
+        console.log(`[Serper Email] No-Website Search: ${query}`);
+
+        const response = await fetch('https://google.serper.dev/search', {
+            method: 'POST',
+            headers: { 'X-API-KEY': SERPER_API_KEY, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ q: query, num: 5 })
+        });
+
+        if (!response.ok) return null;
+        const data: any = await response.json();
+
+        // Collect all text from organic results
+        const texts: string[] = [];
+        for (const result of data.organic || []) {
+            if (result.title) texts.push(result.title);
+            if (result.snippet) texts.push(result.snippet);
+        }
+        if (data.answerBox?.answer) texts.push(data.answerBox.answer);
+        if (data.knowledgeGraph?.description) texts.push(data.knowledgeGraph.description);
+
+        const combined = texts.join(' ');
+        const emailRegex = /([a-zA-Z0-9._+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+        const matches = combined.match(emailRegex) || [];
+
+        const cleaned = [...new Set(matches)]
+            .map(e => e.toLowerCase().trim())
+            .filter(e =>
+                !e.includes('sentry') &&
+                !e.includes('example.com') &&
+                !e.includes('wixpress') &&
+                !e.includes('yourname') &&
+                !e.endsWith('.png') &&
+                !e.endsWith('.jpg') &&
+                !e.endsWith('.css') &&
+                !e.endsWith('.js') &&
+                e.split('@')[1]?.length > 3
+            );
+
+        if (cleaned.length > 0) {
+            console.log(`[Serper Email] Found email without website for ${name}: ${cleaned[0]}`);
+            return cleaned[0];
+        }
+
+        console.log(`[Serper Email] No email found in snippets for ${name}`);
+        return null;
+    } catch (e) {
+        console.error(`[Serper Email] Error for ${name}:`, e);
+        return null;
+    }
+};
+

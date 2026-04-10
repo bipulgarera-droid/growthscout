@@ -341,7 +341,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     const hasSelection = selectedIds.size > 0;
     
     if (!hasSelection) {
-        const eligible = results.filter(r => !r.contactEmail && !r.email && r.website && !r.serperSearched).length;
+        const eligible = results.filter(r => !r.contactEmail && !r.email && !r.serperSearched).length;
         const confirmed = window.confirm(`Run Serper Email Search on ${eligible} contacts with missing emails (already-searched contacts will be skipped)?`);
         if (!confirmed) return;
     }
@@ -357,15 +357,15 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                 const needsEmail = !r.contactEmail && !r.email;
                 // ALWAYS skip contacts already searched — never re-spend Serper credits
                 const notAlreadySearched = !r.serperSearched;
-                return inSelection && needsEmail && notAlreadySearched && r.website;
+                return inSelection && needsEmail && notAlreadySearched;
             })
-            .filter(r => !junkDomains.some(d => r.website?.includes(d)))
-            .map(r => ({ id: r.id, website: r.website! }));
+            .filter(r => !r.website || !junkDomains.some(d => r.website?.includes(d)))
+            .map(r => ({ id: r.id, website: r.website, name: r.name, address: r.address || r.city }));
 
         if (payload.length === 0) {
             setStatusText(hasSelection
                 ? 'All selected contacts have already been searched via Serper.'
-                : 'No new contacts to process (all already searched or no website).');
+                : 'No new contacts to process.');
             setIsScraping(false);
             return;
         }

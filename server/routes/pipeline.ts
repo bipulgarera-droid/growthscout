@@ -244,7 +244,7 @@ router.post('/api/pipeline/detect-ads-html', async (req, res) => {
 });
 
 
-import { serperEmailByDomain } from '../services/serper.js';
+import { serperEmailByDomain, serperEmailByNameAndLocation } from '../services/serper.js';
 
 // Email discovery via Serper: queries Google for `domain "email"` and extracts from snippets
 router.post('/api/pipeline/serper-email', async (req, res) => {
@@ -258,11 +258,17 @@ router.post('/api/pipeline/serper-email', async (req, res) => {
         const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
         for (const lead of leads) {
-            if (!lead.website) { results[lead.id] = null; continue; }
             try {
-                results[lead.id] = await serperEmailByDomain(lead.website);
+                if (lead.website) {
+                    results[lead.id] = await serperEmailByDomain(lead.website);
+                } else if (lead.name) {
+                    // Fallback to name/location search if no website exists
+                    results[lead.id] = await serperEmailByNameAndLocation(lead.name, lead.address);
+                } else {
+                    results[lead.id] = null;
+                }
             } catch (e) {
-                console.error(`Serper email failed for ${lead.website}:`, e);
+                console.error(`Serper email failed for ${lead.name || lead.website}:`, e);
                 results[lead.id] = null;
             }
             // Small delay to avoid Serper rate limits

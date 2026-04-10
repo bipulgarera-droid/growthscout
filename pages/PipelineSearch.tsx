@@ -29,6 +29,15 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
   const [filterPhone, setFilterPhone] = useState<'both'|'yes'|'no'>('both');
   const [filterScore, setFilterScore] = useState<'both'|'below50'|'above50'>('both');
 
+  // Sort state
+  const [sortBy, setSortBy] = useState<'none'|'rating'|'reviews'>('none');
+  const [sortDir, setSortDir] = useState<'desc'|'asc'>('desc');
+
+  const toggleSort = (col: 'rating'|'reviews') => {
+    if (sortBy === col) setSortDir(d => d === 'desc' ? 'asc' : 'desc');
+    else { setSortBy(col); setSortDir('desc'); }
+  };
+
   // Modal State
   const [selectedContact, setSelectedContact] = useState<Business | null>(null);
   const [activeTab, setActiveTab] = useState<'contact' | 'website'>('contact');
@@ -403,7 +412,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
 
 
   const filteredResults = useMemo(() => {
-    return results.filter(r => {
+    let list = results.filter(r => {
         if (filterWebsite === 'has' && !r.website) return false;
         if (filterWebsite === 'doesnt' && r.website) return false;
         
@@ -421,7 +430,15 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
 
         return true;
     });
-  }, [results, filterWebsite, filterAds, filterEmail, filterPhone, filterScore]);
+    if (sortBy !== 'none') {
+        list = [...list].sort((a, b) => {
+            const aVal = sortBy === 'rating' ? (a.rating || a.score || 0) : (a.reviewCount || a.reviews || 0);
+            const bVal = sortBy === 'rating' ? (b.rating || b.score || 0) : (b.reviewCount || b.reviews || 0);
+            return sortDir === 'desc' ? bVal - aVal : aVal - bVal;
+        });
+    }
+    return list;
+  }, [results, filterWebsite, filterAds, filterEmail, filterPhone, filterScore, sortBy, sortDir]);
 
   return (
     <div className="flex-1 overflow-auto bg-slate-50 flex flex-col h-full h-screen relative">
@@ -592,6 +609,12 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                   <th className="px-4 py-3">Website</th>
                   <th className="px-4 py-3">Email</th>
                   <th className="px-4 py-3">Running Ads</th>
+                  <th className="px-4 py-3 cursor-pointer select-none hover:text-brand-600" onClick={() => toggleSort('rating')}>
+                    ⭐ Rating {sortBy === 'rating' ? (sortDir === 'desc' ? '↓' : '↑') : ''}
+                  </th>
+                  <th className="px-4 py-3 cursor-pointer select-none hover:text-brand-600" onClick={() => toggleSort('reviews')}>
+                    Reviews {sortBy === 'reviews' ? (sortDir === 'desc' ? '↓' : '↑') : ''}
+                  </th>
                   <th className="px-4 py-3">Quality Score</th>
                 </tr>
               </thead>
@@ -655,10 +678,20 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                           <span className="text-slate-300 italic text-xs">Not checked</span>
                         )}
                       </td>
+                      <td className="px-4 py-3 font-medium" onClick={() => openContactModal(r)}>
+                        {(r.rating || r.score) ? (
+                          <span className="text-amber-600">{Number(r.rating || r.score).toFixed(1)} ★</span>
+                        ) : <span className="text-slate-300">-</span>}
+                      </td>
+                      <td className="px-4 py-3 text-slate-500" onClick={() => openContactModal(r)}>
+                        {(r.reviewCount || r.reviews) ? (
+                          <span>{(r.reviewCount || r.reviews).toLocaleString()}</span>
+                        ) : <span className="text-slate-300">-</span>}
+                      </td>
                       <td className="px-4 py-3" onClick={() => openContactModal(r)}>
-                        {r.score === 0 || !r.score ? <span className="text-slate-300">-</span> : (
-                            <span className={`font-bold ${r.score < 50 ? 'text-rose-600' : 'text-emerald-600'}`}>{r.score}</span>
-                        )}
+                        {r.qualityScore && r.qualityScore > 0 ? (
+                            <span className={`font-bold ${r.qualityScore < 50 ? 'text-rose-600' : 'text-emerald-600'}`}>{r.qualityScore}</span>
+                        ) : <span className="text-slate-300">-</span>}
                       </td>
                     </tr>
                   )})

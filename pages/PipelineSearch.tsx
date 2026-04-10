@@ -379,29 +379,49 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
             return;
         }
 
-        setStatusText(`Serper searching ${payload.length} domain(s)...`);
-        const emailData = await bulkSerperEmail(payload);
+        setStatusText(`Serper searching ${payload.length} lead(s) in batches...`);
 
-        // Mark all processed contacts as serperSearched:true and apply found emails
-        const newResults = results.map(r => {
-            const wasChecked = payload.some(p => p.id === r.id);
-            if (!wasChecked) return r;
-            const foundEmail = emailData[r.id] && emailData[r.id] !== 'NULL' ? emailData[r.id] : undefined;
-            return { ...r, serperSearched: true, ...(foundEmail ? { contactEmail: foundEmail } : {}) };
-        });
-        setResults(newResults);
-        await syncBusinessesToDB(newResults);
+        const BATCH_SIZE = 50;
+        let currentResults = [...results];
+        let totalFound = 0;
 
-        if (onUpdateResult) {
-            newResults.forEach(nr => {
-                if (payload.some(p => p.id === nr.id)) {
-                    onUpdateResult(nr.id, { serperSearched: true, ...(nr.contactEmail ? { contactEmail: nr.contactEmail } : {}) });
+        for (let i = 0; i < payload.length; i += BATCH_SIZE) {
+            const batch = payload.slice(i, i + BATCH_SIZE);
+            const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+            const totalBatches = Math.ceil(payload.length / BATCH_SIZE);
+            setStatusText(`Serper batch ${batchNum}/${totalBatches} (${i + 1}–${Math.min(i + BATCH_SIZE, payload.length)} of ${payload.length})...`);
+
+            try {
+                const emailData = await bulkSerperEmail(batch);
+
+                // Apply results from this batch
+                currentResults = currentResults.map(r => {
+                    const wasInBatch = batch.some(p => p.id === r.id);
+                    if (!wasInBatch) return r;
+                    const foundEmail = emailData[r.id] && emailData[r.id] !== 'NULL' ? emailData[r.id] : undefined;
+                    if (foundEmail) totalFound++;
+                    return { ...r, serperSearched: true, ...(foundEmail ? { contactEmail: foundEmail } : {}) };
+                });
+
+                setResults([...currentResults]);
+
+                // Save this batch's changes immediately to DB — don't wait for all batches
+                const batchBusinesses = currentResults.filter(r => batch.some(p => p.id === r.id));
+                await syncBusinessesToDB(batchBusinesses);
+
+                if (onUpdateResult) {
+                    batchBusinesses.forEach(nr => {
+                        onUpdateResult(nr.id, { serperSearched: true, ...(nr.contactEmail ? { contactEmail: nr.contactEmail } : {}) });
+                    });
                 }
-            });
+            } catch (batchErr: any) {
+                console.error(`Batch ${batchNum} failed:`, batchErr);
+                // Continue with remaining batches even if one fails
+            }
         }
 
-        const found = payload.filter(p => emailData[p.id] && emailData[p.id] !== 'NULL').length;
-        setStatusText(`Serper Email complete. Found ${found}/${payload.length} emails.`);
+        setStatusText(`Serper Email complete. Found ${totalFound}/${payload.length} emails across ${Math.ceil(payload.length / BATCH_SIZE)} batches.`);
+
     } catch (e: any) {
         console.error(e);
         setStatusText('Serper Email failed: ' + e.message);

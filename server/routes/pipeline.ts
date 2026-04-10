@@ -256,17 +256,29 @@ router.post('/api/pipeline/serper-email', async (req, res) => {
 
         const results: Record<string, string | null> = {};
         const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+        const { supabase } = await import('../services/persistence.js');
 
         for (const lead of leads) {
             try {
+                let foundEmail: string | null = null;
+
                 if (lead.website) {
-                    results[lead.id] = await serperEmailByDomain(lead.website);
+                    foundEmail = await serperEmailByDomain(lead.website);
                 } else if (lead.name) {
-                    // Fallback to name/location search if no website exists
-                    results[lead.id] = await serperEmailByNameAndLocation(lead.name, lead.location);
-                } else {
-                    results[lead.id] = null;
+                    foundEmail = await serperEmailByNameAndLocation(lead.name, lead.location);
                 }
+
+                results[lead.id] = foundEmail;
+
+                // ✅ Persist directly to Supabase — do not rely on the frontend to relay this back
+                if (supabase && lead.id) {
+                    const patch: any = { serper_searched: true };
+                    if (foundEmail && foundEmail !== 'NULL') {
+                        patch.contact_email = foundEmail;
+                    }
+                    await supabase.from('leads').update(patch).eq('id', lead.id);
+                }
+
             } catch (e) {
                 console.error(`Serper email failed for ${lead.name || lead.website}:`, e);
                 results[lead.id] = null;
@@ -281,6 +293,7 @@ router.post('/api/pipeline/serper-email', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
 
 
 import { generateAllMessages, LeadOutreachInput } from '../services/outreach.js';

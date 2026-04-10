@@ -29,7 +29,7 @@ router.get('/api/pipeline/stream', async (req, res) => {
     const ping = setInterval(() => res.write(':ping\n\n'), 15000); 
 
     try {
-        const result = await runScrapingPipeline(service, city, targetCount, (chunk) => {
+        const result = await runScrapingPipeline(service, city, targetCount, projectId, (chunk) => {
              res.write(`data: ${JSON.stringify({ type: 'log', message: chunk })}\n\n`);
         });
 

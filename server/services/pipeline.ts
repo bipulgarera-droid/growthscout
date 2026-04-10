@@ -11,11 +11,37 @@ const BINARY_PATH = path.resolve(__dirname, '../bin/scraper/google_maps_scraper'
 const TEMP_DIR = path.resolve(__dirname, '../.tmp/pipeline');
 
 /**
+ * Dynamically fetches all ZIP codes for a given city and state.
+ * Expected input for city: "Dallas" or "Dallas, TX" or "Texas"
+ * If state is missing, we try to parse it or default to a broad approach.
+ */
+async function fetchZipCodes(cityString: string, onData?: (chunk: string) => void): Promise<string[]> {
+    try {
+        // Simple heuristic: if cityString is "Dallas, TX", we extract "TX"
+        const parts = cityString.split(',').map(s => s.trim());
+        const city = parts[0];
+        // Default to TX since growthscout is heavily TX based for now, but handle provided state if exists.
+        const state = parts.length > 1 ? parts[1] : 'tx'; 
+        
+        if (onData) onData(`[Zip Engine] Fetching zip codes for ${city}, ${state.toUpperCase()} from Zippopotam...`);
+        const res = await fetch(`https://api.zippopotam.us/us/${state.toLowerCase()}/${encodeURIComponent(city.toLowerCase())}`);
+        if (!res.ok) {
+            throw new Error(`Failed to fetch zips: ${res.status}`);
+        }
+        const data = await res.json();
+        const zips = data.places.map((p: any) => p['post code']);
+        if (onData) onData(`[Zip Engine] Discovered ${zips.length} ZIP codes for ${city}.`);
+        return zips;
+    } catch (err: any) {
+        if (onData) onData(`[Zip Engine] Error fetching zip codes: ${err.message}. Falling back to standard queries.`);
+        return [];
+    }
+}
+
+/**
  * Generates an automated list of keywords to feed into the scraper.
  */
 function generateKeywords(service: string, city: string): string[] {
-    // A more advanced engine would fetch actual JSON suburbs for the city.
-    // For now we use cardinal directions and permutations.
     const modifiers = ['best', 'residential', 'commercial', 'emergency', 'affordable'];
     const areas = ['North', 'South', 'East', 'West', 'Downtown'];
     
@@ -37,13 +63,53 @@ function generateKeywords(service: string, city: string): string[] {
     return queries;
 }
 
-export async function runScrapingPipeline(service: string, city: string, targetCount: number, onData?: (chunk: string) => void) {
+export async function runScrapingPipeline(service: string, city: string, targetCount: number, projectId?: string, onData?: (chunk: string) => void) {
     if (!fs.existsSync(TEMP_DIR)) {
         fs.mkdirSync(TEMP_DIR, { recursive: true });
     }
 
     const runId = Date.now().toString();
-    const queries = generateKeywords(service, city);
+    
+    // 1. Fetch Supabase completed zips state if a project ID is provided
+    let completedZips: string[] = [];
+    const { supabase } = await import('./persistence.js');
+    if (projectId && supabase) {
+        const { data, error } = await supabase
+            .from('projects')
+            .select('completed_zip_codes')
+            .eq('id', projectId)
+            .single();
+            
+        if (!error && data?.completed_zip_codes) {
+            completedZips = Array.isArray(data.completed_zip_codes) ? data.completed_zip_codes : [];
+            if (onData) onData(`[Supabase] Loaded ${completedZips.length} previously completed ZIP codes for this project.`);
+        }
+    }
+
+    // 2. Map ZIP Codes
+    let queries: string[] = [];
+    let isZipMode = false;
+    const allCityZips = await fetchZipCodes(city, onData);
+    
+    if (allCityZips.length > 0) {
+        isZipMode = true;
+        // Filter out the zips we already scraped previously
+        const remainingZips = allCityZips.filter(z => !completedZips.includes(z));
+        if (onData) onData(`[Zip Engine] Processing ${remainingZips.length} remaining ZIP codes... (${completedZips.length} skipped)`);
+        
+        queries = remainingZips.map(zip => `${service} ${zip}`);
+        
+        // If we drained the entire city!
+        if (queries.length === 0) {
+            if (onData) onData(`[Zip Engine] NOTICE: You have already exhausted all ZIP codes in ${city} for this project.`);
+            // Fallback to broad queries just in case Google has random floating boundaries
+            queries = generateKeywords(service, city);
+            isZipMode = false;
+        }
+    } else {
+        queries = generateKeywords(service, city);
+    }
+    
     let allRecords: any[] = [];
     let currentResultsFile = path.resolve(TEMP_DIR, `results_${runId}.csv`);
 
@@ -67,6 +133,8 @@ export async function runScrapingPipeline(service: string, city: string, targetC
         return result;
     };
 
+    let newlyCompletedZips: string[] = [];
+
     for (let index = 0; index < queries.length; index++) {
         if (allRecords.length >= targetCount) {
             if (onData) onData(`Target quota of ${targetCount} reached. Halting query spread.`);
@@ -77,7 +145,7 @@ export async function runScrapingPipeline(service: string, city: string, targetC
         const queryFile = path.resolve(TEMP_DIR, `query_${runId}_${index}.txt`);
         fs.writeFileSync(queryFile, query, 'utf-8');
 
-        if (onData) onData(`[Query ${index+1}/${queries.length}] Scaling target matrix => "${query}" (Current: ${allRecords.length}/${targetCount})`);
+        if (onData) onData(`[Query ${index+1}/${queries.length}] Targeting => "${query}"`);
 
         await new Promise((resolve, reject) => {
             const scraperProcess = spawn(BINARY_PATH, [
@@ -148,6 +216,23 @@ export async function runScrapingPipeline(service: string, city: string, targetC
 
             scraperProcess.on('error', (err) => resolve(false));
         });
+
+        // Add to completed zips tracking array if this was a ZIP-based search
+        if (isZipMode) {
+            const zipMatch = query.match(/\d{5}$/);
+            if (zipMatch) newlyCompletedZips.push(zipMatch[0]);
+        }
+    }
+
+    // 3. Save completed zips back to Supabase
+    if (isZipMode && projectId && newlyCompletedZips.length > 0 && supabase) {
+        const mergedZips = Array.from(new Set([...completedZips, ...newlyCompletedZips]));
+        if (onData) onData(`[Supabase] Saving state... Marking ${newlyCompletedZips.length} new ZIP codes as permanently drained.`);
+        
+        await supabase
+            .from('projects')
+            .update({ completed_zip_codes: mergedZips })
+            .eq('id', projectId);
     }
 
     return { 

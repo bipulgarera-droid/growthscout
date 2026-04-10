@@ -195,7 +195,8 @@ export async function runScrapingPipeline(service: string, city: string, targetC
                                         score: parseFloat(record.rating) || 0,
                                         address: record.address || record.full_address,
                                         niche: record.main_category || record.category,
-                                        reviews: parseInt(record.reviews || record.reviews_count) || 0
+                                        reviews: parseInt(record.reviews || record.reviews_count) || 0,
+                                        searchLocation: city  // Always store the city used for this scrape
                                     });
                                 }
                             }

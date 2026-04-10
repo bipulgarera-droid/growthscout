@@ -263,7 +263,7 @@ router.post('/api/pipeline/serper-email', async (req, res) => {
                     results[lead.id] = await serperEmailByDomain(lead.website);
                 } else if (lead.name) {
                     // Fallback to name/location search if no website exists
-                    results[lead.id] = await serperEmailByNameAndLocation(lead.name, lead.address);
+                    results[lead.id] = await serperEmailByNameAndLocation(lead.name, lead.location);
                 } else {
                     results[lead.id] = null;
                 }

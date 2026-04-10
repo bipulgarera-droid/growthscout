@@ -153,6 +153,6 @@ export async function runScrapingPipeline(service: string, city: string, targetC
     return { 
         success: true, 
         csvFilePath: 'In-Memory Sharded Run', 
-        records: allRecords.slice(0, targetCount) 
+        records: allRecords 
     };
 }

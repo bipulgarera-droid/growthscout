@@ -331,7 +331,7 @@ export const loadAllBusinesses = async (projectId?: string): Promise<Business[]>
 
     console.log(`[Persistence] Loading businesses from Supabase (Project ID: ${projectId || 'ALL'})...`);
 
-    let url = `${SUPABASE_URL}/rest/v1/leads?select=*&order=created_at.desc`;
+    let url = `${SUPABASE_URL}/rest/v1/leads?select=*&order=created_at.desc&limit=100000`;
     if (projectId) {
         url += `&project_id=eq.${projectId}`;
     }

@@ -267,7 +267,9 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                 const rowKey = (r as any).place_id || r.name;
                 const inSelection = hasSelection ? selectedIds.has(rowKey) : true;
                 const needsEmail = forceRecheck ? true : (!r.contactEmail && !r.email);
-                return inSelection && needsEmail && r.website;
+                // Skip if already searched via any OSINT tool
+                const notAlreadySearched = !r.serperSearched;
+                return inSelection && needsEmail && notAlreadySearched && r.website;
             })
             .filter(r => !junkDomains.some(d => r.website?.includes(d)))
             .map(r => ({ id: r.id, website: r.website }));
@@ -288,10 +290,12 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
             if (wasChecked) {
                 if (emailData[r.id] && emailData[r.id] !== 'NULL') {
                     // Found a real email — use it
-                    return { ...r, contactEmail: emailData[r.id] };
+                    return { ...r, contactEmail: emailData[r.id], serperSearched: true };
                 } else if (forceRecheck) {
                     // Force checked: returned nothing, explicitly clear any hallucinated email
-                    return { ...r, contactEmail: null as any };
+                    return { ...r, contactEmail: null as any, serperSearched: true };
+                } else {
+                    return { ...r, serperSearched: true };
                 }
             }
             return r;
@@ -462,6 +466,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                 <option value="2000">Limit: 2000</option>
                 <option value="5000">Limit: 5000</option>
                 <option value="10000">Limit: 10000</option>
+                <option value="999999">Unlimited</option>
             </select>
           </div>
           <button
@@ -635,7 +640,10 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                         {r.contactEmail || r.email ? (
                             <span className="text-emerald-700">{r.contactEmail || r.email}</span>
                         ) : (
-                            <span className="text-amber-600 italic text-xs">Missing</span>
+                            <div className="flex items-center gap-1 flex-wrap">
+                                <span className="text-amber-600 italic text-xs">Missing</span>
+                                {r.serperSearched && <span title="OSINT Checked" className="text-[10px] text-slate-400 font-medium bg-slate-100 px-1.5 py-0.5 rounded">(Searched)</span>}
+                            </div>
                         )}
                       </td>
                       <td className="px-4 py-3" onClick={() => openContactModal(r)}>

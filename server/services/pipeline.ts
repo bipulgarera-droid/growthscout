@@ -192,7 +192,7 @@ export async function runScrapingPipeline(service: string, city: string, targetC
                                         website: record.website,
                                         email: record.emails ? record.emails.split(',')[0] : null,
                                         ads: false,
-                                        score: 0,
+                                        score: parseFloat(record.rating) || 0,
                                         address: record.address || record.full_address,
                                         niche: record.main_category || record.category,
                                         reviews: parseInt(record.reviews || record.reviews_count) || 0

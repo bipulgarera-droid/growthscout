@@ -566,8 +566,8 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
         </div>
 
         {/* Filter Bar */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-6 flex flex-wrap gap-4 items-center justify-between">
-            <div className="flex flex-wrap gap-4 items-center">
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-6 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+            <div className="flex flex-wrap gap-4 items-center w-full md:w-auto">
               <div className="text-sm font-semibold text-slate-800 flex items-center gap-2"><Filter size={16}/> Layout Filters:</div>
               
               <select className="text-sm border rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-brand-500" value={filterWebsite} onChange={e=>setFilterWebsite(e.target.value as any)}>

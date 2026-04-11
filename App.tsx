@@ -258,9 +258,9 @@ const App = () => {
 
   return (
     <HashRouter>
-      <div className="flex min-h-screen bg-slate-50">
+      <div className="flex min-h-screen bg-slate-50 flex-col md:flex-row pb-16 md:pb-0">
         <Sidebar />
-        <main className="ml-64 flex-1 flex flex-col overflow-hidden h-screen">
+        <main className="md:ml-64 flex-1 flex flex-col overflow-hidden h-screen w-full relative">
           <Topbar />
 
           <div className="flex-1 overflow-x-hidden overflow-y-auto">

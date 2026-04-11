@@ -462,7 +462,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
 
   return (
     <div className="flex-1 overflow-auto bg-slate-50 flex flex-col h-full h-screen relative">
-      <div className="bg-white border-b sticky top-0 z-10 px-6 py-4 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
+      <div className="bg-white border-b sticky top-0 z-10 px-4 md:px-6 py-4 shadow-sm flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
         <div className="flex items-center gap-3">
           <Database className="text-brand-600" size={24} />
           <div>
@@ -471,30 +471,30 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
           </div>
         </div>
 
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <div className="relative">
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          <div className="relative flex-1 min-w-[140px] md:flex-none">
             <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input
               type="text"
               placeholder="Service (e.g. Plumber)"
-              className="pl-10 pr-4 py-2 border rounded-xl text-sm w-48 focus:ring-2 focus:ring-brand-500 outline-none"
+              className="pl-10 pr-4 py-2 border rounded-xl text-sm w-full md:w-48 focus:ring-2 focus:ring-brand-500 outline-none"
               value={service}
               onChange={(e) => setService(e.target.value)}
             />
           </div>
-          <div className="relative">
+          <div className="relative flex-1 min-w-[140px] md:flex-none">
             <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input
               type="text"
               placeholder="City (e.g. Austin, TX)"
-              className="pl-10 pr-4 py-2 border rounded-xl text-sm w-48 focus:ring-2 focus:ring-brand-500 outline-none"
+              className="pl-10 pr-4 py-2 border rounded-xl text-sm w-full md:w-48 focus:ring-2 focus:ring-brand-500 outline-none"
               value={city}
               onChange={(e) => setCity(e.target.value)}
             />
           </div>
           
-          <div className="relative hidden md:block">
-            <select value={targetCount} onChange={(e) => setTargetCount(e.target.value)} className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500 font-medium text-slate-700 w-32 appearance-none">
+          <div className="relative flex-1 min-w-[120px] md:flex-none">
+            <select value={targetCount} onChange={(e) => setTargetCount(e.target.value)} className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500 font-medium text-slate-700 w-full md:w-32 appearance-none">
                 <option value="50">Limit: 50</option>
                 <option value="100">Limit: 100</option>
                 <option value="250">Limit: 250</option>
@@ -509,7 +509,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
           <button
             onClick={startPipeline}
             disabled={isScraping || !service || !city}
-            className="bg-brand-600 text-white px-5 py-2 rounded-xl text-sm font-semibold hover:bg-brand-700 disabled:opacity-50 flex items-center gap-2 shadow-sm transition-all shadow-brand-500/20 active:scale-95"
+            className="w-full md:w-auto bg-brand-600 justify-center text-white px-5 py-2 rounded-xl text-sm font-semibold hover:bg-brand-700 disabled:opacity-50 flex items-center gap-2 shadow-sm transition-all shadow-brand-500/20 active:scale-95"
           >
             {isScraping ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
             {isScraping ? 'Running...' : 'Fetch Base Pipeline Data'}

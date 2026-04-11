@@ -213,7 +213,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     setStatusText('Scanning websites for ad tracking tags (HTML)...');
     setIsScraping(true);
     try {
-        const payload = results
+        const payload = filteredResults
             .filter(r => r.website)
             .map(r => ({ id: r.id, website: r.website }));
         
@@ -271,7 +271,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     setIsScraping(true);
     try {
         const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'lawnlove.com', 'thumbtack.com', 'angi.com'];
-        const payload = results
+        const payload = filteredResults
             .filter(r => {
                 const rowKey = (r as any).place_id || r.name;
                 const inSelection = hasSelection ? selectedIds.has(rowKey) : true;
@@ -359,7 +359,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     setIsScraping(true);
     try {
         const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'lawnlove.com', 'thumbtack.com', 'angi.com'];
-        const payload = results
+        const payload = filteredResults
             .filter(r => {
                 const rowKey = (r as any).place_id || r.name;
                 const inSelection = hasSelection ? selectedIds.has(rowKey) : true;

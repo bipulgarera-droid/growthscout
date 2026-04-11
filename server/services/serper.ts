@@ -452,19 +452,21 @@ export const serperEmailByDomain = async (websiteUrl: string): Promise<string | 
         const emailRegex = /([a-zA-Z0-9._+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
         const matches = combined.match(emailRegex) || [];
 
+        const placeholders = ['jane', 'janes', 'jdoe', 'john', 'doe', 'johndoe', 'janedoe', 'john.doe', 'jane.doe', 'first', 'last', 'firstlast', 'first.last', 'yourname', 'name', 'email', 'test'];
         const cleaned = [...new Set(matches)]
             .map(e => e.toLowerCase().trim())
-            .filter(e =>
-                !e.includes('sentry') &&
-                !e.includes('example.com') &&
-                !e.includes('wixpress') &&
-                !e.includes('yourname') &&
-                !e.endsWith('.png') &&
-                !e.endsWith('.jpg') &&
-                !e.endsWith('.css') &&
-                !e.endsWith('.js') &&
-                e.split('@')[1]?.length > 3
-            );
+            .filter(e => {
+                const prefix = e.split('@')[0];
+                return !placeholders.includes(prefix) &&
+                    !e.includes('sentry') &&
+                    !e.includes('example.com') &&
+                    !e.includes('wixpress') &&
+                    !e.endsWith('.png') &&
+                    !e.endsWith('.jpg') &&
+                    !e.endsWith('.css') &&
+                    !e.endsWith('.js') &&
+                    (e.split('@')[1]?.length > 3);
+            });
 
         if (cleaned.length > 0) {
             console.log(`[Serper Email] Found email for ${domain}: ${cleaned[0]}`);
@@ -539,19 +541,21 @@ export const serperEmailByNameAndLocation = async (name: string, location?: stri
         const emailRegex = /([a-zA-Z0-9._+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
         const matches = combined.match(emailRegex) || [];
 
+        const placeholders = ['jane', 'janes', 'jdoe', 'john', 'doe', 'johndoe', 'janedoe', 'john.doe', 'jane.doe', 'first', 'last', 'firstlast', 'first.last', 'yourname', 'name', 'email', 'test'];
         const cleaned = [...new Set(matches)]
             .map(e => e.toLowerCase().trim())
-            .filter(e =>
-                !e.includes('sentry') &&
-                !e.includes('example.com') &&
-                !e.includes('wixpress') &&
-                !e.includes('yourname') &&
-                !e.endsWith('.png') &&
-                !e.endsWith('.jpg') &&
-                !e.endsWith('.css') &&
-                !e.endsWith('.js') &&
-                e.split('@')[1]?.length > 3
-            );
+            .filter(e => {
+                const prefix = e.split('@')[0];
+                return !placeholders.includes(prefix) &&
+                    !e.includes('sentry') &&
+                    !e.includes('example.com') &&
+                    !e.includes('wixpress') &&
+                    !e.endsWith('.png') &&
+                    !e.endsWith('.jpg') &&
+                    !e.endsWith('.css') &&
+                    !e.endsWith('.js') &&
+                    (e.split('@')[1]?.length > 3);
+            });
 
         if (cleaned.length > 0) {
             console.log(`[Serper Email] Found email without website for ${name}: ${cleaned[0]}`);

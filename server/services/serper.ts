@@ -423,7 +423,7 @@ export const serperEmailByDomain = async (websiteUrl: string, name?: string, nic
         let query: string;
         if (cleanName) {
             // New format: VLT Marketing digital marketing agency Austin email
-            query = [cleanName, cleanNiche, cleanCity, 'email'].filter(Boolean).join(' ');
+            query = [cleanName, cleanNiche, cleanCity, '"email"'].filter(Boolean).join(' ');
         } else {
             // Fallback to domain search if name not provided
             let domain = websiteUrl.trim();
@@ -506,7 +506,7 @@ export const serperEmailByNameAndLocation = async (name: string, location?: stri
         const cleanNiche = (niche || '').trim();
 
         // New format: Whittier Lawn Care landscaper Austin email
-        const query = [cleanName, cleanNiche, cleanLoc, 'email'].filter(Boolean).join(' ');
+        const query = [cleanName, cleanNiche, cleanLoc, '"email"'].filter(Boolean).join(' ');
         console.log(`[Serper Email] Searching: ${query}`);
 
         const response = await fetch('https://google.serper.dev/search', {

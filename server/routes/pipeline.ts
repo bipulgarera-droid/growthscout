@@ -56,7 +56,7 @@ router.get('/api/pipeline/stream', async (req, res) => {
                     category: r.niche || service,
                     contactEmail: r.email || '',
                     status: 'new',
-                    qualityScore: r.score || 0,
+                    qualityScore: 0,      // PageSpeed analysis sets this later
                     projectId: projectId || undefined,
                     source: 'pipeline',
                     searchQuery: service as string,

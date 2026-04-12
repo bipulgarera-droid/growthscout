@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Loader2, Play, Building2, MapPin, Database, Filter, ExternalLink, Activity, Mail, Check, RefreshCw, Smartphone, X, User, Globe, ChevronDown, Send } from 'lucide-react';
+import { Search, Loader2, Play, Building2, MapPin, Database, Filter, ExternalLink, Activity, Mail, Check, RefreshCw, Smartphone, X, User, Globe, ChevronDown, Send, Trash } from 'lucide-react';
 import { Business } from '../types';
 import { generateWebsite, uploadLogo, enrichBusiness, bulkEnrich, bulkAnalyze, bulkCheckAds, bulkDetectAdsHTML, bulkFallbackEmail, bulkSerperEmail, syncBusinessesToDB, updateBusinessInDB } from '../services/backendApi';
 

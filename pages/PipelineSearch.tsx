@@ -28,6 +28,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
   const [filterEmail, setFilterEmail] = useState<'both'|'yes'|'no'>('both');
   const [filterPhone, setFilterPhone] = useState<'both'|'yes'|'no'>('both');
   const [filterScore, setFilterScore] = useState<'both'|'below50'|'above50'>('both');
+  const [filterReviewCount, setFilterReviewCount] = useState<'both'|'below50'|'above50'>('both');
 
   // Sort state
   const [sortBy, setSortBy] = useState<'none'|'rating'|'reviews'>('none');
@@ -448,6 +449,10 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
         if (filterScore === 'below50' && r.score >= 50) return false;
         if (filterScore === 'above50' && r.score < 50) return false;
 
+        const revCount = r.reviewCount || r.reviews || 0;
+        if (filterReviewCount === 'below50' && revCount >= 50) return false;
+        if (filterReviewCount === 'above50' && revCount < 50) return false;
+
         return true;
     });
     if (sortBy !== 'none') {
@@ -458,7 +463,13 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
         });
     }
     return list;
-  }, [results, filterWebsite, filterAds, filterEmail, filterPhone, filterScore, sortBy, sortDir]);
+  }, [results, filterWebsite, filterAds, filterEmail, filterPhone, filterScore, filterReviewCount, sortBy, sortDir]);
+
+  const averageReviews = useMemo(() => {
+      if (results.length === 0) return 0;
+      const total = results.reduce((sum, r) => sum + (r.reviewCount || r.reviews || 0), 0);
+      return Math.round(total / results.length);
+  }, [results]);
 
   return (
     <div className="flex-1 overflow-auto bg-slate-50 flex flex-col h-full h-screen relative">
@@ -599,6 +610,12 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                   <option value="below50">Quality Score Below 50</option>
                   <option value="above50">Quality Score Above 50</option>
               </select>
+
+              <select className="text-sm border rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-brand-500" value={filterReviewCount} onChange={e=>setFilterReviewCount(e.target.value as any)}>
+                  <option value="both">Reviews: Both</option>
+                  <option value="below50">Below 50</option>
+                  <option value="above50">50 or Above</option>
+              </select>
             </div>
 
             {/* Result Count */}
@@ -606,6 +623,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
               <div className="text-sm font-semibold text-slate-600">
                 Showing <span className="text-brand-600">{filteredResults.length}</span> of <span className="text-brand-600">{results.length}</span> businesses
                 {selectedIds.size > 0 && <span className="ml-2 text-emerald-600">({selectedIds.size} selected)</span>}
+                <span className="ml-4 px-2 py-1 bg-brand-50 text-brand-700 rounded-md">Avg Reviews: {averageReviews}</span>
               </div>
             )}
         </div>

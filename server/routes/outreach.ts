@@ -101,6 +101,9 @@ router.post('/api/push-to-outreach', async (req, res) => {
                 category: lead.category || 'Unknown',
                 location: lead.search_location || lead.address || null,
                 niche: lead.category || null,
+                rating: lead.rating || null,
+                review_count: lead.review_count || null,
+                review_url: lead.review_url || null,
                 bio,
                 pagespeed_mobile: lead.pagespeed_mobile || null,
                 pagespeed_desktop: lead.pagespeed_desktop || null,
@@ -116,6 +119,8 @@ router.post('/api/push-to-outreach', async (req, res) => {
                     search_location: lead.search_location,
                     category: lead.category,
                     niche: lead.category,
+                    rating: lead.rating || null,
+                    review_count: lead.review_count || null,
                     // If the email was found via Serper (Google indexed it), it's already OSINT-verified.
                     // QuickReach's send_emails.py reads this flag to skip redundant OSINT on risky contacts.
                     ...(lead.audit_data?.serper_searched ? { serper_verified: true } : {}),

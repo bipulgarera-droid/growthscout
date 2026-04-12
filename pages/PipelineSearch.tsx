@@ -369,7 +369,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                 return inSelection && needsEmail && notAlreadySearched;
             })
             .filter(r => !r.website || !junkDomains.some(d => r.website?.includes(d)))
-            .map(r => ({ id: r.id, website: r.website, name: r.name, location: r.searchLocation || r.address }));
+            .map(r => ({ id: r.id, website: r.website, name: r.name, location: r.searchLocation || r.address, niche: r.searchQuery || r.category || '' }));
 
         if (payload.length === 0) {
             setStatusText(hasSelection

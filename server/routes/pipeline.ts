@@ -263,9 +263,9 @@ router.post('/api/pipeline/serper-email', async (req, res) => {
                 let foundEmail: string | null = null;
 
                 if (lead.website) {
-                    foundEmail = await serperEmailByDomain(lead.website);
+                    foundEmail = await serperEmailByDomain(lead.website, lead.name, lead.niche, lead.location);
                 } else if (lead.name) {
-                    foundEmail = await serperEmailByNameAndLocation(lead.name, lead.location);
+                    foundEmail = await serperEmailByNameAndLocation(lead.name, lead.location, lead.niche);
                 }
 
                 results[lead.id] = foundEmail;

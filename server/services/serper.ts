@@ -408,23 +408,33 @@ export const isRunningGoogleAds = async (businessName: string, city: string): Pr
 };
 
 /**
- * Find email for a business by searching Google for: domain "email"
- * e.g. "benystreeserviceatx.com email"
- * Extracts emails from snippets returned by Serper.
+ * Find email for a business by searching Google for: name niche city email
+ * e.g. VLT Marketing digital marketing agency Austin email
  */
-export const serperEmailByDomain = async (websiteUrl: string): Promise<string | null> => {
+export const serperEmailByDomain = async (websiteUrl: string, name?: string, niche?: string, location?: string): Promise<string | null> => {
     if (!SERPER_API_KEY) return null;
 
     try {
-        // Strip to bare domain: https://www.benystreeserviceatx.com/ → benystreeserviceatx.com
-        let domain = websiteUrl.trim();
-        try {
-            const u = new URL(domain.startsWith('http') ? domain : `https://${domain}`);
-            domain = u.hostname.replace(/^www\./, '');
-        } catch (_) {}
+        // Build query: business name + niche + city + email (all bare, no quotes)
+        const cleanName = (name || '').trim();
+        const cleanNiche = (niche || '').trim();
+        const cleanCity = (location || '').trim();
 
-        const query = `${domain} "email"`;
-        console.log(`[Serper Email] Searching: "${query}"`);
+        let query: string;
+        if (cleanName) {
+            // New format: VLT Marketing digital marketing agency Austin email
+            query = [cleanName, cleanNiche, cleanCity, 'email'].filter(Boolean).join(' ');
+        } else {
+            // Fallback to domain search if name not provided
+            let domain = websiteUrl.trim();
+            try {
+                const u = new URL(domain.startsWith('http') ? domain : `https://${domain}`);
+                domain = u.hostname.replace(/^www\./, '');
+            } catch (_) {}
+            query = `${domain} email`;
+        }
+
+        console.log(`[Serper Email] Searching: ${query}`);
 
         const response = await fetch('https://google.serper.dev/search', {
             method: 'POST',
@@ -444,7 +454,6 @@ export const serperEmailByDomain = async (websiteUrl: string): Promise<string | 
                 if (sl.snippet) texts.push(sl.snippet);
             }
         }
-        // Also check answerBox and knowledgeGraph if present
         if (data.answerBox?.answer) texts.push(data.answerBox.answer);
         if (data.knowledgeGraph?.description) texts.push(data.knowledgeGraph.description);
 
@@ -469,11 +478,11 @@ export const serperEmailByDomain = async (websiteUrl: string): Promise<string | 
             });
 
         if (cleaned.length > 0) {
-            console.log(`[Serper Email] Found email for ${domain}: ${cleaned[0]}`);
+            console.log(`[Serper Email] Found email for ${cleanName || websiteUrl}: ${cleaned[0]}`);
             return cleaned[0];
         }
 
-        console.log(`[Serper Email] No email found in snippets for ${domain}`);
+        console.log(`[Serper Email] No email found for ${cleanName || websiteUrl}`);
         return null;
     } catch (e) {
         console.error(`[Serper Email] Error for ${websiteUrl}:`, e);
@@ -482,42 +491,23 @@ export const serperEmailByDomain = async (websiteUrl: string): Promise<string | 
 };
 
 /**
- * Find email for a business with NO website by searching Google for: "business name" email "city"
- * e.g. "Carrate Landscaping" email "Austin"
- * Extracts emails from snippets returned by Serper.
+ * Find email for a business with NO website: name niche city email
+ * e.g. Whittier Lawn Care landscaper Austin email
  */
-export const serperEmailByNameAndLocation = async (name: string, location?: string): Promise<string | null> => {
+export const serperEmailByNameAndLocation = async (name: string, location?: string, niche?: string): Promise<string | null> => {
     if (!SERPER_API_KEY) return null;
 
     try {
-        // Strip quotes and common legal suffixes before wrapping in quotes
-        // e.g. "Whittier Lawn Care LLC" → "Whittier Lawn Care"
-        const LEGAL_SUFFIXES = /\b(LLC|LLP|LP|PLLC|Inc\.?|Corp\.?|Co\.?|Ltd\.?|Company|Group|Holdings|Services|Solutions|Enterprises?|Associates?|Partners?|& Associates?)\b\.?$/i;
-        const cleanName = name
-            .replace(/["']/g, '')
-            .replace(LEGAL_SUFFIXES, '')
-            .replace(/[,\s]+$/, '')  // trailing commas/spaces
-            .trim();
-        
-        // Google Maps addresses follow: "Street, City, State ZIP, Country"
-        // So city is reliably 3rd from the end (parts[length-3])
-        let cleanLoc = '';
-        if (location) {
-            const parts = location.split(',').map(p => p.trim()).filter(Boolean);
-            if (parts.length >= 3) {
-                // e.g. ["8601 FM 969", "Austin", "TX 78724", "USA"] → parts[-3] = "Austin"
-                cleanLoc = parts[parts.length - 3].replace(/["']/g, '').trim();
-            } else if (parts.length > 0) {
-                cleanLoc = parts[0].replace(/["']/g, '').trim();
-            }
-        }
-        
-        let query = `"${cleanName}" email`;
-        if (cleanLoc) {
-            query += ` "${cleanLoc}"`;
-        }
-        
-        console.log(`[Serper Email] No-Website Search: ${query}`);
+        // Clean name (strip quotes, no legal suffix stripping needed — no quotes used)
+        const cleanName = name.replace(/[\"']/g, '').trim();
+
+        // Use location directly as city (it's stored as clean city from searchLocation)
+        const cleanLoc = (location || '').replace(/[\"']/g, '').trim();
+        const cleanNiche = (niche || '').trim();
+
+        // New format: Whittier Lawn Care landscaper Austin email
+        const query = [cleanName, cleanNiche, cleanLoc, 'email'].filter(Boolean).join(' ');
+        console.log(`[Serper Email] Searching: ${query}`);
 
         const response = await fetch('https://google.serper.dev/search', {
             method: 'POST',
@@ -528,7 +518,6 @@ export const serperEmailByNameAndLocation = async (name: string, location?: stri
         if (!response.ok) return null;
         const data: any = await response.json();
 
-        // Collect all text from organic results
         const texts: string[] = [];
         for (const result of data.organic || []) {
             if (result.title) texts.push(result.title);
@@ -558,11 +547,11 @@ export const serperEmailByNameAndLocation = async (name: string, location?: stri
             });
 
         if (cleaned.length > 0) {
-            console.log(`[Serper Email] Found email without website for ${name}: ${cleaned[0]}`);
+            console.log(`[Serper Email] Found email for ${name}: ${cleaned[0]}`);
             return cleaned[0];
         }
 
-        console.log(`[Serper Email] No email found in snippets for ${name}`);
+        console.log(`[Serper Email] No email found for ${name}`);
         return null;
     } catch (e) {
         console.error(`[Serper Email] Error for ${name}:`, e);

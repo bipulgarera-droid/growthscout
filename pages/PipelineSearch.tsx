@@ -345,6 +345,44 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     }
   };
 
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    const confirmed = window.confirm(`Are you sure you want to delete ${selectedIds.size} contacts? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setStatusText('Deleting contacts...');
+    setIsScraping(true);
+    try {
+        const idsToDelete = Array.from(selectedIds);
+        // Assuming rowKey in selection maps directly to row.id or row.place_id, we need the DB ids.
+        // Convert selectedIds back to DB ids
+        const dbIds = filteredResults
+            .filter(r => {
+                const rowKey = (r as any).place_id || r.name;
+                return selectedIds.has(rowKey);
+            })
+            .map(r => r.id);
+
+        const res = await fetch('/api/pipeline/leads', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: dbIds })
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        // Remove from local state
+        setResults(prev => prev.filter(r => !dbIds.includes(r.id)));
+        setSelectedIds(new Set());
+        setStatusText(`Deleted ${data.count} contacts.`);
+    } catch (e: any) {
+        console.error(e);
+        setStatusText('Deletion failed: ' + e.message);
+    } finally {
+        setIsScraping(false);
+    }
+  };
+
   const handleSerperEmail = async () => {
     if (results.length === 0) return;
     
@@ -359,7 +397,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     setStatusText('Running Serper Email Search (domain + "email" query)...');
     setIsScraping(true);
     try {
-        const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'lawnlove.com', 'thumbtack.com', 'angi.com'];
+        const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'lawnlove.com', 'thumbtack.com', 'angi.com', 'vagaro.com'];
         const payload = filteredResults
             .filter(r => {
                 const rowKey = (r as any).place_id || r.name;
@@ -560,6 +598,11 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                 <button onClick={handleFallbackEmail} disabled={isScraping || results.length === 0} className="bg-cyan-50 text-cyan-600 px-3 py-1.5 rounded-lg border border-cyan-200 text-xs font-medium hover:bg-cyan-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
                     <Mail size={14} /> Fallback Email Search (Jina Scraper)
                 </button>
+                {selectedIds.size > 0 && (
+                  <button onClick={handleDeleteSelected} disabled={isScraping} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-200 text-xs font-medium hover:bg-red-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
+                      <Trash size={14} /> Delete Selected
+                  </button>
+                )}
                 {selectedIds.size > 0 && (
                   <button
                     onClick={async () => {

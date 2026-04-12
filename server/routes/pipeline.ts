@@ -2,6 +2,7 @@ import { Router } from 'express';
 
 
 const router = Router();
+import { supabase } from '../supabaseClient.js';
 
 import { runScrapingPipeline } from '../services/pipeline.js';
 
@@ -380,6 +381,27 @@ router.post('/api/pipeline/site-gen-bulk', async (req, res) => {
         res.json({ success: true, results });
     } catch (error: any) {
         console.error('Bulk Site Gen Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.delete('/api/pipeline/leads', async (req, res) => {
+    try {
+        const { ids } = req.body;
+        if (!ids || !Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ error: 'ids array required' });
+        }
+
+        const { error } = await supabase
+            .from('leads')
+            .delete()
+            .in('id', ids);
+
+        if (error) throw error;
+        
+        res.json({ success: true, count: ids.length });
+    } catch (error: any) {
+        console.error('Bulk Delete Error:', error);
         res.status(500).json({ error: error.message });
     }
 });

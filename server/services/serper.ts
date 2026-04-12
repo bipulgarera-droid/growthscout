@@ -421,21 +421,14 @@ export const serperEmailByDomain = async (websiteUrl: string, name?: string, nic
         const cleanCity = (location || '').trim();
 
         let query: string;
-        if (cleanName) {
-            // Format: "owner" "VLT Marketing" "Austin" "email"
-            const parts = ['"owner"', `"${cleanName}"`];
-            if (cleanCity) parts.push(`"${cleanCity}"`);
-            parts.push('"email"');
-            query = parts.join(' ');
-        } else {
-            // Fallback to domain search if name not provided
-            let domain = websiteUrl.trim();
-            try {
-                const u = new URL(domain.startsWith('http') ? domain : `https://${domain}`);
-                domain = u.hostname.replace(/^www\./, '');
-            } catch (_) {}
-            query = `"owner" "${domain}" "email"`;
-        }
+        let domain = websiteUrl.trim();
+        try {
+            const u = new URL(domain.startsWith('http') ? domain : `https://${domain}`);
+            domain = u.hostname.replace(/^www\./, '');
+        } catch (_) {}
+        
+        // Format: cskpavers.com "email"
+        query = `${domain} "email"`;
 
         console.log(`[Serper Email] Searching: ${query}`);
 
@@ -503,13 +496,11 @@ export const serperEmailByNameAndLocation = async (name: string, location?: stri
     try {
         // Clean name (strip quotes, no legal suffix stripping needed — no quotes used)
         const cleanName = name.replace(/[\"']/g, '').trim();
-
-        // Use location directly as city (it's stored as clean city from searchLocation)
         const cleanLoc = (location || '').replace(/[\"']/g, '').trim();
-        // Format: "owner" "Whittier Lawn Care" "Austin" "email"
-        const parts = ['"owner"', `"${cleanName}"`];
+
+        // Format: "Whittier Lawn Care" "email" "Austin"
+        const parts = [`"${cleanName}"`, '"email"'];
         if (cleanLoc) parts.push(`"${cleanLoc}"`);
-        parts.push('"email"');
 
         const query = parts.join(' ');
         console.log(`[Serper Email] Searching: ${query}`);

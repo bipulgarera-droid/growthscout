@@ -369,8 +369,16 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                 const notAlreadySearched = !r.serperSearched;
                 return inSelection && needsEmail && notAlreadySearched;
             })
-            .filter(r => !r.website || !junkDomains.some(d => r.website?.includes(d)))
-            .map(r => ({ id: r.id, website: r.website, name: r.name, location: extractCity(r.address) || r.searchLocation || r.address, niche: r.searchQuery || r.category || '' }));
+            .map(r => {
+                const isJunk = r.website && junkDomains.some(d => r.website?.includes(d));
+                return { 
+                    id: r.id, 
+                    website: isJunk ? null : r.website, 
+                    name: r.name, 
+                    location: extractCity(r.address) || r.searchLocation || r.address, 
+                    niche: r.searchQuery || r.category || '' 
+                };
+            });
 
         if (payload.length === 0) {
             setStatusText(hasSelection

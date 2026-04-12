@@ -422,8 +422,11 @@ export const serperEmailByDomain = async (websiteUrl: string, name?: string, nic
 
         let query: string;
         if (cleanName) {
-            // New format: VLT Marketing digital marketing agency Austin email
-            query = [cleanName, cleanNiche, cleanCity, '"email"'].filter(Boolean).join(' ');
+            // Format: "owner" "VLT Marketing" "Austin" "email"
+            const parts = ['"owner"', `"${cleanName}"`];
+            if (cleanCity) parts.push(`"${cleanCity}"`);
+            parts.push('"email"');
+            query = parts.join(' ');
         } else {
             // Fallback to domain search if name not provided
             let domain = websiteUrl.trim();
@@ -431,7 +434,7 @@ export const serperEmailByDomain = async (websiteUrl: string, name?: string, nic
                 const u = new URL(domain.startsWith('http') ? domain : `https://${domain}`);
                 domain = u.hostname.replace(/^www\./, '');
             } catch (_) {}
-            query = `${domain} email`;
+            query = `"owner" "${domain}" "email"`;
         }
 
         console.log(`[Serper Email] Searching: ${query}`);
@@ -503,10 +506,12 @@ export const serperEmailByNameAndLocation = async (name: string, location?: stri
 
         // Use location directly as city (it's stored as clean city from searchLocation)
         const cleanLoc = (location || '').replace(/[\"']/g, '').trim();
-        const cleanNiche = (niche || '').trim();
+        // Format: "owner" "Whittier Lawn Care" "Austin" "email"
+        const parts = ['"owner"', `"${cleanName}"`];
+        if (cleanLoc) parts.push(`"${cleanLoc}"`);
+        parts.push('"email"');
 
-        // New format: Whittier Lawn Care landscaper Austin email
-        const query = [cleanName, cleanNiche, cleanLoc, '"email"'].filter(Boolean).join(' ');
+        const query = parts.join(' ');
         console.log(`[Serper Email] Searching: ${query}`);
 
         const response = await fetch('https://google.serper.dev/search', {

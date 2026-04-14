@@ -387,6 +387,14 @@ export const extractEmailJina = async (websiteUrl: string): Promise<string | nul
     try {
         console.log(`[Email Fallback] Scraping website natively via Jina AI: ${websiteUrl}...`);
         
+        // Jina free-tier optimized headers: strip images, return markdown text only
+        const jinaHeaders: Record<string, string> = {
+            'X-Return-Format': 'markdown',
+            'X-Retain-Images': 'none',
+            'Accept': 'text/plain',
+        };
+        const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+        
         let pageContent = '';
         try {
             const rawBase = websiteUrl.endsWith('/') ? websiteUrl.slice(0, -1) : websiteUrl;
@@ -398,30 +406,33 @@ export const extractEmailJina = async (websiteUrl: string): Promise<string | nul
             
             // First fetch the homepage via Jina to look for emails AND dynamic contact links
             try {
-                const homeResp = await fetch(`https://r.jina.ai/${cleanBase}`);
+                const homeResp = await fetch(`https://r.jina.ai/${cleanBase}`, { headers: jinaHeaders });
                 if (homeResp.ok) {
                     const homeText = await homeResp.text();
                     if (homeText && homeText.length > 20) {
                         pageContent += '\n\n' + homeText;
                         
-                        // Extract Markdown links (e.g. [Let's Connect](/reach-out) )
-                        const linkRegex = /\]\(([^)]+)\)/g;
-                        let match;
-                        while ((match = linkRegex.exec(homeText)) !== null) {
-                            const href = match[1].toLowerCase().trim();
-                            if (href.includes('contact') || href.includes('about') || href.includes('connect') || href.includes('reach') || href.includes('hello')) {
-                                // Ignore emailto and tel links
-                                if (href.startsWith('mailto:') || href.startsWith('tel:')) continue;
-                                
-                                if (href.startsWith('http')) {
-                                    if (href.includes(urlObj.hostname)) {
-                                        try { contactPaths.add(new URL(href).pathname); } catch(e){}
+                        // Check if email already found on homepage — skip sub-path discovery entirely
+                        if (/[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+/.test(homeText)) {
+                            console.log(`[Email Fallback] Email found on homepage for ${websiteUrl}, skipping sub-paths.`);
+                        } else {
+                            // Extract Markdown links (e.g. [Let's Connect](/reach-out) )
+                            const linkRegex = /\]\(([^)]+)\)/g;
+                            let match;
+                            while ((match = linkRegex.exec(homeText)) !== null) {
+                                const href = match[1].toLowerCase().trim();
+                                if (href.includes('contact') || href.includes('about') || href.includes('connect') || href.includes('reach') || href.includes('hello')) {
+                                    if (href.startsWith('mailto:') || href.startsWith('tel:')) continue;
+                                    
+                                    if (href.startsWith('http')) {
+                                        if (href.includes(urlObj.hostname)) {
+                                            try { contactPaths.add(new URL(href).pathname); } catch(e){}
+                                        }
+                                    } else if (href.startsWith('/')) {
+                                        contactPaths.add(href);
+                                    } else {
+                                        contactPaths.add('/' + href);
                                     }
-                                } else if (href.startsWith('/')) {
-                                    contactPaths.add(href);
-                                } else {
-                                    // Relative paths like "contact-us.html" -> "/contact-us.html"
-                                    contactPaths.add('/' + href);
                                 }
                             }
                         }
@@ -429,21 +440,23 @@ export const extractEmailJina = async (websiteUrl: string): Promise<string | nul
                 }
             } catch (_) { /* Skip if homepage totally fails */ }
 
-            // Try sequentially (including the dynamically found paths).
-            for (const p of Array.from(contactPaths)) {
-                // We already fetched the homepage (''), so skip fetching it again unless pageContent is empty
-                if (p === '' && pageContent.length > 20) continue;
-                
-                try {
-                    const resp = await fetch(`https://r.jina.ai/${cleanBase}${p}`);
-                    if (resp.ok) {
-                        const text = await resp.text();
-                        if (text && text.length > 50) {
-                            pageContent += '\n\n' + text;
-                            if (/[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+/.test(text)) break;
+            // Only traverse sub-paths if we haven't already found an email on the homepage
+            if (!/[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+/.test(pageContent)) {
+                for (const p of Array.from(contactPaths)) {
+                    if (p === '' && pageContent.length > 20) continue;
+                    
+                    await sleep(400); // Breathing room between Jina sub-path requests
+                    try {
+                        const resp = await fetch(`https://r.jina.ai/${cleanBase}${p}`, { headers: jinaHeaders });
+                        if (resp.ok) {
+                            const text = await resp.text();
+                            if (text && text.length > 50) {
+                                pageContent += '\n\n' + text;
+                                if (/[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+/.test(text)) break;
+                            }
                         }
-                    }
-                } catch (_) { /* skip failed sub-paths */ }
+                    } catch (_) { /* skip failed sub-paths */ }
+                }
             }
         } catch (e) {
             console.error(`[Email Fallback] Jina Scrape failed for ${websiteUrl}:`, e);

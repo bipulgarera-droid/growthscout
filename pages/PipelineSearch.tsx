@@ -265,12 +265,11 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     if (results.length === 0) return;
     
     const hasSelection = selectedIds.size > 0;
-    
-    // Build prompt based on context
-    const promptMsg = hasSelection
-        ? `Run Jina Email Scraper on ${selectedIds.size} selected contact(s)? Click OK to force-recheck even if they already have emails. Click Cancel to skip ones that already have emails.`
-        : `Do you want to force re-check ALL websites? (Click OK to recheck all, including those that already have emails. Click Cancel to only check missing emails.)`;
-    const forceRecheck = window.confirm(promptMsg);
+    if (!hasSelection) {
+        const eligible = results.filter(r => !r.contactEmail && !r.email && !r.serperSearched).length;
+        const confirmed = window.confirm(`Run Jina Email Scraper on ${eligible} contacts with missing emails (already-searched contacts will be skipped)?`);
+        if (!confirmed) return;
+    }
     
     setStatusText('Running Jina Website Email Scraper...');
     setIsScraping(true);
@@ -280,7 +279,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
             .filter(r => {
                 const rowKey = (r as any).place_id || r.name;
                 const inSelection = hasSelection ? selectedIds.has(rowKey) : true;
-                const needsEmail = forceRecheck ? true : (!r.contactEmail && !r.email);
+                const needsEmail = !r.contactEmail && !r.email;
                 // Skip if already searched via any OSINT tool
                 const notAlreadySearched = !r.serperSearched;
                 return inSelection && needsEmail && notAlreadySearched && r.website;
@@ -305,17 +304,13 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
 
             try {
                 const emailData = await bulkFallbackEmail(batch);
-                const wipedIds = batch
-                    .filter(p => forceRecheck && (!emailData[p.id] || emailData[p.id] === 'NULL'))
-                    .map(p => p.id);
+                const wipedIds: string[] = [];
 
                 currentResults = currentResults.map(r => {
                     const wasChecked = batch.some(p => p.id === r.id);
                     if (wasChecked) {
                         if (emailData[r.id] && emailData[r.id] !== 'NULL') {
                             return { ...r, contactEmail: emailData[r.id], serperSearched: true };
-                        } else if (forceRecheck) {
-                            return { ...r, contactEmail: null as any, serperSearched: true };
                         } else {
                             return { ...r, serperSearched: true };
                         }
@@ -337,8 +332,6 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                         if (wasChecked) {
                             if (emailData[nr.id] && emailData[nr.id] !== 'NULL') {
                                 onUpdateResult(nr.id, { contactEmail: emailData[nr.id] });
-                            } else if (forceRecheck) {
-                                onUpdateResult(nr.id, { contactEmail: null as any });
                             }
                         }
                     });

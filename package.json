@@ -10,7 +10,7 @@
     "build": "vite build",
     "start": "node --import tsx server/index.ts",
     "preview": "vite preview",
-    "postinstall": "node scripts/install-scraper.js"
+    "postinstall": "node scripts/install-scraper.js && pip3 install duckduckgo-search || pip install duckduckgo-search"
   },
   "dependencies": {
     "@google/genai": "^1.35.0",

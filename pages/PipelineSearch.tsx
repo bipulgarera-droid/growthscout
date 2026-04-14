@@ -11,6 +11,8 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
   const [isScraping, setIsScraping] = useState(false);
   const [results, setResults] = useState<any[]>(initialResults);
   const [statusText, setStatusText] = useState('Idle');
+  const [customPostalCodes, setCustomPostalCodes] = useState('');
+  const [showPostalInput, setShowPostalInput] = useState(false);
 
   // Sync with global state (project switch, data reload)
   React.useEffect(() => {
@@ -96,7 +98,8 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     setResults([]);
     setSelectedIds(new Set());
     
-    const evtSource = new EventSource(`/api/pipeline/stream?service=${encodeURIComponent(service)}&city=${encodeURIComponent(city)}&targetCount=${targetCount}&projectId=${projectId || ''}`);
+    const codesParam = customPostalCodes.trim() ? `&customPostalCodes=${encodeURIComponent(customPostalCodes.split(/[\n,]+/).map(c => c.trim()).filter(Boolean).join(','))}` : '';
+    const evtSource = new EventSource(`/api/pipeline/stream?service=${encodeURIComponent(service)}&city=${encodeURIComponent(city)}&targetCount=${targetCount}&projectId=${projectId || ''}${codesParam}`);
 
     evtSource.onmessage = (event) => {
         try {
@@ -383,6 +386,93 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     }
   };
 
+  const handleDDGEmail = async () => {
+    if (results.length === 0) return;
+    
+    const hasSelection = selectedIds.size > 0;
+    
+    if (!hasSelection) {
+        const eligible = results.filter(r => !r.contactEmail && !r.email).length;
+        const confirmed = window.confirm(`Run DuckDuckGo Email Search on ${eligible} contacts with missing emails?`);
+        if (!confirmed) return;
+    }
+
+    setStatusText('Running DuckDuckGo Email Search (site:domain "email" query)...');
+    setIsScraping(true);
+    try {
+        const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'lawnlove.com', 'thumbtack.com', 'angi.com', 'vagaro.com', 'fresha.com', 'booksy.com'];
+        const payload = filteredResults
+            .filter(r => {
+                const rowKey = (r as any).place_id || r.name;
+                const inSelection = hasSelection ? selectedIds.has(rowKey) : true;
+                const needsEmail = !r.contactEmail && !r.email;
+                return inSelection && needsEmail;
+            })
+            .map(r => {
+                const isJunk = r.website && junkDomains.some(d => r.website?.includes(d));
+                return { 
+                    id: r.id, 
+                    website: isJunk ? null : r.website, 
+                    name: r.name, 
+                    location: extractCity(r.address) || r.searchLocation || r.address, 
+                    niche: r.searchQuery || r.category || '' 
+                };
+            }).filter(r => r.website); // DDG script explicitly uses website
+
+        if (payload.length === 0) {
+            setStatusText(hasSelection
+                ? 'All selected contacts already have emails or lack a valid domain.'
+                : 'No new contacts to process with valid domains.');
+            setIsScraping(false);
+            return;
+        }
+
+        setStatusText(`DuckDuckGo searching ${payload.length} lead(s) in batches...`);
+
+        const BATCH_SIZE = 50;
+        let currentResults = [...results];
+        let totalFound = 0;
+
+        for (let i = 0; i < payload.length; i += BATCH_SIZE) {
+            const batch = payload.slice(i, i + BATCH_SIZE);
+            const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+            const totalBatches = Math.ceil(payload.length / BATCH_SIZE);
+            setStatusText(`DDG batch ${batchNum}/${totalBatches} (${i + 1}–${Math.min(i + BATCH_SIZE, payload.length)} of ${payload.length})...`);
+
+            try {
+                const response = await fetch('/api/pipeline/ddg-email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ leads: batch })
+                });
+
+                if (!response.ok) throw new Error(await response.text());
+                const data = await response.json();
+                const emailData = data.results || {};
+
+                currentResults = currentResults.map(r => {
+                    const wasInBatch = batch.some(p => p.id === r.id);
+                    if (!wasInBatch) return r;
+                    const foundEmail = emailData[r.id] && emailData[r.id] !== 'NULL' ? emailData[r.id] : undefined;
+                    if (foundEmail) totalFound++;
+                    return { ...r, ...(foundEmail ? { contactEmail: foundEmail } : {}) };
+                });
+                setResults(currentResults);
+            } catch (err) {
+                console.error(`DDG Batch ${batchNum} error:`, err);
+            }
+            // Polite delay between batches
+            await new Promise(r => setTimeout(r, 1000));
+        }
+
+        setStatusText(`DuckDuckGo Email Search Complete! Found ${totalFound} new emails.`);
+    } catch (e: any) {
+        setStatusText('DDG Email Search Failed: ' + e.message);
+    } finally {
+        setIsScraping(false);
+    }
+  };
+
   const handleSerperEmail = async () => {
     if (results.length === 0) return;
     
@@ -397,7 +487,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     setStatusText('Running Serper Email Search (domain + "email" query)...');
     setIsScraping(true);
     try {
-        const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'lawnlove.com', 'thumbtack.com', 'angi.com', 'vagaro.com'];
+        const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'lawnlove.com', 'thumbtack.com', 'angi.com', 'vagaro.com', 'fresha.com', 'booksy.com'];
         const payload = filteredResults
             .filter(r => {
                 const rowKey = (r as any).place_id || r.name;
@@ -574,6 +664,30 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
         </div>
       </div>
 
+      {/* Custom Postal Codes Input */}
+      <div className="bg-white border-b px-4 md:px-6 py-2">
+        <button
+          onClick={() => setShowPostalInput(!showPostalInput)}
+          className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors"
+        >
+          <MapPin size={14} />
+          <span>Custom Postal Codes (International)</span>
+          <ChevronDown size={14} className={`transition-transform ${showPostalInput ? 'rotate-180' : ''}`} />
+          {customPostalCodes.trim() && <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full text-[10px] font-semibold">{customPostalCodes.split(/[\n,]+/).filter(c => c.trim()).length} codes</span>}
+        </button>
+        {showPostalInput && (
+          <div className="mt-2 flex flex-col gap-2">
+            <textarea
+              value={customPostalCodes}
+              onChange={(e) => setCustomPostalCodes(e.target.value)}
+              placeholder={"Paste postal codes here, one per line or comma-separated.\nExamples:\n8001\n8005\n7441\n\nOr: 8001, 8005, 7441"}
+              className="w-full md:w-96 h-28 text-sm border border-slate-200 rounded-xl p-3 font-mono focus:ring-2 focus:ring-purple-400 outline-none resize-y bg-slate-50"
+            />
+            <p className="text-[11px] text-slate-400">When provided, the scraper will use these codes instead of auto-fetching US ZIP codes. Paste one code per line or comma-separated.</p>
+          </div>
+        )}
+      </div>
+
       <div className="p-6 flex-1 flex flex-col max-w-[1600px] mx-auto w-full">
         {/* Status Bar */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-6 flex justify-between items-center flex-wrap gap-4">
@@ -594,6 +708,9 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                 </button>
                 <button onClick={handleDetectAdsHTML} disabled={isScraping || results.length === 0} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-200 text-xs font-medium hover:bg-red-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
                     <Search size={14} /> Detect Ads (HTML Scan)
+                </button>
+                <button onClick={handleDDGEmail} disabled={isScraping || results.length === 0} className="bg-purple-50 text-purple-600 px-3 py-1.5 rounded-lg border border-purple-200 text-xs font-medium hover:bg-purple-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
+                    <Search size={14} /> DuckDuckGo Email Search (Free)
                 </button>
                 <button onClick={handleFallbackEmail} disabled={isScraping || results.length === 0} className="bg-cyan-50 text-cyan-600 px-3 py-1.5 rounded-lg border border-cyan-200 text-xs font-medium hover:bg-cyan-100 flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors">
                     <Mail size={14} /> Fallback Email Search (Jina Scraper)

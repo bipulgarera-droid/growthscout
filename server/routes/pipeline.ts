@@ -11,6 +11,8 @@ router.get('/api/pipeline/stream', async (req, res) => {
     const city = req.query.city as string;
     const projectId = req.query.projectId as string;
     const targetCount = parseInt(req.query.targetCount as string) || 100;
+    const customCodesRaw = req.query.customPostalCodes as string;
+    const customPostalCodes = customCodesRaw ? customCodesRaw.split(',').map(c => c.trim()).filter(Boolean) : undefined;
     
     if (!service || !city) {
         res.status(400).json({ error: 'Service and city required.' });
@@ -32,7 +34,7 @@ router.get('/api/pipeline/stream', async (req, res) => {
     try {
         const result = await runScrapingPipeline(service, city, targetCount, projectId, (chunk) => {
              res.write(`data: ${JSON.stringify({ type: 'log', message: chunk })}\n\n`);
-        });
+        }, customPostalCodes);
 
         clearInterval(ping);
 
@@ -291,6 +293,75 @@ router.post('/api/pipeline/serper-email', async (req, res) => {
         res.json({ success: true, results });
     } catch (error: any) {
         console.error('Serper Email Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+import { execFile } from 'child_process';
+import path from 'path';
+
+// Email discovery via DuckDuckGo: spawns Python script
+router.post('/api/pipeline/ddg-email', async (req, res) => {
+    try {
+        const { leads } = req.body;
+        if (!leads || !Array.isArray(leads)) {
+            return res.status(400).json({ error: 'leads array required' });
+        }
+
+        const results: Record<string, string | null> = {};
+        const { supabase } = await import('../services/persistence.js');
+        const scriptPath = path.join(process.cwd(), 'execution', 'ddg_email_search.py');
+
+        for (const lead of leads) {
+            try {
+                let foundEmail: string | null = null;
+                
+                if (lead.website) {
+                    const payload = JSON.stringify({ website: lead.website, name: lead.name, location: lead.location });
+                    const emailResult: string = await new Promise((resolve, reject) => {
+                        execFile('python3', [scriptPath, payload], { timeout: 30000 }, (error, stdout, stderr) => {
+                            if (error) {
+                                console.error('DDG script error:', stderr);
+                                resolve('NULL');
+                                return;
+                            }
+                            try {
+                                const parsed = JSON.parse(stdout);
+                                resolve(parsed.success && parsed.email ? parsed.email : 'NULL');
+                            } catch(e) {
+                                resolve('NULL');
+                            }
+                        });
+                    });
+                    
+                    if (emailResult !== 'NULL') foundEmail = emailResult;
+                }
+
+                results[lead.id] = foundEmail;
+
+                // Persist directly to Supabase
+                if (supabase && lead.id) {
+                    const patch: any = {};
+                    if (foundEmail && foundEmail !== 'NULL') {
+                        patch.contact_email = foundEmail;
+                    }
+                    if (Object.keys(patch).length > 0) {
+                        await supabase.from('leads').update(patch).eq('id', lead.id);
+                    }
+                }
+
+            } catch (e) {
+                console.error(`DDG email failed for ${lead.name || lead.website}:`, e);
+                results[lead.id] = null;
+            }
+            
+            // Artificial delay to prevent DDG blocking
+            await new Promise(r => setTimeout(r, 1500));
+        }
+
+        res.json({ success: true, results });
+    } catch (error: any) {
+        console.error('DDG Email Error:', error);
         res.status(500).json({ error: error.message });
     }
 });

@@ -63,7 +63,7 @@ function generateKeywords(service: string, city: string): string[] {
     return queries;
 }
 
-export async function runScrapingPipeline(service: string, city: string, targetCount: number, projectId?: string, onData?: (chunk: string) => void) {
+export async function runScrapingPipeline(service: string, city: string, targetCount: number, projectId?: string, onData?: (chunk: string) => void, customPostalCodes?: string[]) {
     if (!fs.existsSync(TEMP_DIR)) {
         fs.mkdirSync(TEMP_DIR, { recursive: true });
     }
@@ -86,28 +86,42 @@ export async function runScrapingPipeline(service: string, city: string, targetC
         }
     }
 
-    // 2. Map ZIP Codes
+    // 2. Map ZIP/Postal Codes
     let queries: string[] = [];
     let isZipMode = false;
-    const allCityZips = await fetchZipCodes(city, onData);
-    
-    if (allCityZips.length > 0) {
+
+    if (customPostalCodes && customPostalCodes.length > 0) {
+        // ✅ User provided custom postal codes — skip Zippopotam entirely
         isZipMode = true;
-        // Filter out the zips we already scraped previously
-        const remainingZips = allCityZips.filter(z => !completedZips.includes(z));
-        if (onData) onData(`[Zip Engine] Processing ${remainingZips.length} remaining ZIP codes... (${completedZips.length} skipped)`);
+        const remainingCodes = customPostalCodes.filter(z => !completedZips.includes(z));
+        if (onData) onData(`[Custom Codes] Processing ${remainingCodes.length} custom postal codes... (${customPostalCodes.length - remainingCodes.length} skipped as already completed)`);
         
-        queries = remainingZips.map(zip => `${service} ${zip}`);
+        queries = remainingCodes.map(code => `${service} ${code}`);
         
-        // If we drained the entire city!
         if (queries.length === 0) {
-            if (onData) onData(`[Zip Engine] NOTICE: You have already exhausted all ZIP codes in ${city} for this project.`);
-            // Fallback to broad queries just in case Google has random floating boundaries
+            if (onData) onData(`[Custom Codes] NOTICE: All provided postal codes have already been scraped for this project.`);
             queries = generateKeywords(service, city);
             isZipMode = false;
         }
     } else {
-        queries = generateKeywords(service, city);
+        // Default: US-only Zippopotam lookup
+        const allCityZips = await fetchZipCodes(city, onData);
+    
+        if (allCityZips.length > 0) {
+            isZipMode = true;
+            const remainingZips = allCityZips.filter(z => !completedZips.includes(z));
+            if (onData) onData(`[Zip Engine] Processing ${remainingZips.length} remaining ZIP codes... (${completedZips.length} skipped)`);
+            
+            queries = remainingZips.map(zip => `${service} ${zip}`);
+            
+            if (queries.length === 0) {
+                if (onData) onData(`[Zip Engine] NOTICE: You have already exhausted all ZIP codes in ${city} for this project.`);
+                queries = generateKeywords(service, city);
+                isZipMode = false;
+            }
+        } else {
+            queries = generateKeywords(service, city);
+        }
     }
     
     let allRecords: any[] = [];

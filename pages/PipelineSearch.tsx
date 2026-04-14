@@ -415,7 +415,8 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                 const rowKey = (r as any).place_id || r.name;
                 const inSelection = hasSelection ? selectedIds.has(rowKey) : true;
                 const needsEmail = !r.contactEmail && !r.email;
-                return inSelection && needsEmail;
+                const notAlreadySearched = !r.serperSearched;
+                return inSelection && needsEmail && notAlreadySearched;
             })
             .map(r => {
                 const isJunk = r.website && junkDomains.some(d => r.website?.includes(d));
@@ -464,9 +465,20 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                     if (!wasInBatch) return r;
                     const foundEmail = emailData[r.id] && emailData[r.id] !== 'NULL' ? emailData[r.id] : undefined;
                     if (foundEmail) totalFound++;
-                    return { ...r, ...(foundEmail ? { contactEmail: foundEmail } : {}) };
+                    return { ...r, serperSearched: true, ...(foundEmail ? { contactEmail: foundEmail } : {}) };
                 });
-                setResults(currentResults);
+                
+                setResults([...currentResults]);
+                
+                // Save this batch's changes immediately to DB — don't wait for all batches
+                const batchBusinesses = currentResults.filter(r => batch.some(p => p.id === r.id));
+                await syncBusinessesToDB(batchBusinesses);
+
+                if (onUpdateResult) {
+                    batchBusinesses.forEach(nr => {
+                        onUpdateResult(nr.id, { serperSearched: true, ...(nr.contactEmail ? { contactEmail: nr.contactEmail } : {}) });
+                    });
+                }
             } catch (err) {
                 console.error(`DDG Batch ${batchNum} error:`, err);
             }

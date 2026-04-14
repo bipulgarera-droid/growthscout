@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Search, Loader2, Play, Building2, MapPin, Database, Filter, ExternalLink, Activity, Mail, Check, RefreshCw, Smartphone, X, User, Globe, ChevronDown, Send, Trash } from 'lucide-react';
 import { Business } from '../types';
-import { generateWebsite, uploadLogo, enrichBusiness, bulkEnrich, bulkAnalyze, bulkCheckAds, bulkDetectAdsHTML, bulkFallbackEmail, bulkSerperEmail, syncBusinessesToDB, updateBusinessInDB } from '../services/backendApi';
+import { generateWebsite, uploadLogo, enrichBusiness, bulkEnrich, bulkAnalyze, bulkCheckAds, bulkDetectAdsHTML, bulkFallbackEmail, bulkSerperEmail, queueJinaEmail, getJinaQueueStatus, syncBusinessesToDB, updateBusinessInDB } from '../services/backendApi';
 
 
 export default function PipelineSearch({ initialResults = [], projectId, onUpdateResult }: { initialResults?: any[], projectId?: string, onUpdateResult?: (id: string, data: Partial<Business>) => void }) {
@@ -265,87 +265,68 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
     if (results.length === 0) return;
     
     const hasSelection = selectedIds.size > 0;
-    if (!hasSelection) {
-        const eligible = results.filter(r => !r.contactEmail && !r.email && !r.serperSearched).length;
-        const confirmed = window.confirm(`Run Jina Email Scraper on ${eligible} contacts with missing emails (already-searched contacts will be skipped)?`);
-        if (!confirmed) return;
-    }
     
-    setStatusText('Running Jina Website Email Scraper...');
+    const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'lawnlove.com', 'thumbtack.com', 'angi.com'];
+    const payload = filteredResults
+        .filter(r => {
+            const rowKey = (r as any).place_id || r.name;
+            const inSelection = hasSelection ? selectedIds.has(rowKey) : true;
+            const needsEmail = !r.contactEmail && !r.email;
+            const notAlreadySearched = !r.serperSearched;
+            return inSelection && needsEmail && notAlreadySearched && r.website;
+        })
+        .filter(r => !junkDomains.some(d => r.website?.includes(d)))
+        .map(r => ({ id: r.id, website: r.website }));
+    
+    if (payload.length === 0) {
+        setStatusText('No contacts to process (all already searched or missing websites).');
+        return;
+    }
+
+    const confirmed = window.confirm(
+        `Queue ${payload.length} leads for background Jina Email Scraping?\n\nThe server will process them independently — you can close your laptop.`
+    );
+    if (!confirmed) return;
+
     setIsScraping(true);
     try {
-        const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'lawnlove.com', 'thumbtack.com', 'angi.com'];
-        const payload = filteredResults
-            .filter(r => {
-                const rowKey = (r as any).place_id || r.name;
-                const inSelection = hasSelection ? selectedIds.has(rowKey) : true;
-                const needsEmail = !r.contactEmail && !r.email;
-                // Skip if already searched via any OSINT tool
-                const notAlreadySearched = !r.serperSearched;
-                return inSelection && needsEmail && notAlreadySearched && r.website;
-            })
-            .filter(r => !junkDomains.some(d => r.website?.includes(d)))
-            .map(r => ({ id: r.id, website: r.website }));
-        if (payload.length === 0) {
-            setStatusText('No contacts to process.');
-            setIsScraping(false);
-            return;
-        }
-
-        setStatusText(`Jina scraping ${payload.length} website(s) in batches...`);
-        const BATCH_SIZE = 15; // Jina allows 200/min. Running 15 domains synchronously in backend takes time, so 15 per proxy POST is safe and won't timeout Railway 100s limit.
-        let currentResults = [...results];
-
-        for (let i = 0; i < payload.length; i += BATCH_SIZE) {
-            const batch = payload.slice(i, i + BATCH_SIZE);
-            const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-            const totalBatches = Math.ceil(payload.length / BATCH_SIZE);
-            setStatusText(`Jina batch ${batchNum}/${totalBatches} (${i + 1}–${Math.min(i + BATCH_SIZE, payload.length)} of ${payload.length})...`);
-
+        const { jobId, message } = await queueJinaEmail(payload);
+        setStatusText(`✅ ${message} (Job: ${jobId.slice(0, 12)}...)`);
+        
+        // Mark all queued leads as "in progress" locally so they show as searched
+        setResults(prev => prev.map(r => {
+            const wasQueued = payload.some(p => p.id === r.id);
+            return wasQueued ? { ...r, serperSearched: true } : r;
+        }));
+        
+        // Start polling for progress updates in the background
+        const pollInterval = setInterval(async () => {
             try {
-                const emailData = await bulkFallbackEmail(batch);
-                const wipedIds: string[] = [];
-
-                currentResults = currentResults.map(r => {
-                    const wasChecked = batch.some(p => p.id === r.id);
-                    if (wasChecked) {
-                        if (emailData[r.id] && emailData[r.id] !== 'NULL') {
-                            return { ...r, contactEmail: emailData[r.id], serperSearched: true };
-                        } else {
-                            return { ...r, serperSearched: true };
-                        }
-                    }
-                    return r;
-                });
-                
-                setResults([...currentResults]);
-                
-                const batchBusinesses = currentResults.filter(r => batch.some(p => p.id === r.id));
-                await Promise.allSettled([
-                    syncBusinessesToDB(batchBusinesses),
-                    ...wipedIds.map(id => updateBusinessInDB(id, { contactEmail: null as any }))
-                ]);
-
-                if (onUpdateResult) {
-                    currentResults.forEach(nr => {
-                        const wasChecked = batch.some(p => p.id === nr.id);
-                        if (wasChecked) {
-                            if (emailData[nr.id] && emailData[nr.id] !== 'NULL') {
-                                onUpdateResult(nr.id, { contactEmail: emailData[nr.id] });
-                            }
-                        }
-                    });
+                const status = await getJinaQueueStatus(jobId);
+                if (status.status === 'running') {
+                    setStatusText(`🔄 Jina Queue: ${status.processed}/${status.total} processed, ${status.found} emails found...`);
+                } else if (status.status === 'done') {
+                    setStatusText(`✅ Jina Queue Complete! ${status.found}/${status.total} emails found. Refresh to see results.`);
+                    clearInterval(pollInterval);
+                    setIsScraping(false);
+                } else if (status.status === 'error') {
+                    setStatusText(`❌ Jina Queue Error: ${status.error}`);
+                    clearInterval(pollInterval);
+                    setIsScraping(false);
                 }
-            } catch (batchErr) {
-                console.error(`Jina Batch ${batchNum} failed:`, batchErr);
+            } catch {
+                // Polling failed (maybe laptop was closed) — stop silently
+                clearInterval(pollInterval);
+                setIsScraping(false);
             }
-            await new Promise(r => setTimeout(r, 1000));
-        }
-        setStatusText('Jina Email Scrape complete.');
+        }, 5000); // Poll every 5 seconds
+        
+        // Safety: stop polling after 2 hours max
+        setTimeout(() => { clearInterval(pollInterval); setIsScraping(false); }, 2 * 60 * 60 * 1000);
+        
     } catch (e: any) {
         console.error(e);
-        setStatusText('Email fallback failed: ' + e.message);
-    } finally {
+        setStatusText('Failed to queue Jina job: ' + e.message);
         setIsScraping(false);
     }
   };

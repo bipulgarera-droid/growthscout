@@ -218,6 +218,126 @@ router.post('/api/pipeline/fallback-email', async (req, res) => {
     }
 });
 
+// ===== SERVER-SIDE BACKGROUND JINA QUEUE =====
+// Fire-and-forget: browser sends all lead IDs once, server processes in background.
+// User can close their laptop — Railway keeps crunching.
+
+interface JinaJob {
+    id: string;
+    status: 'running' | 'done' | 'error';
+    total: number;
+    processed: number;
+    found: number;
+    startedAt: string;
+    finishedAt?: string;
+    error?: string;
+}
+
+// In-memory job store (survives as long as Railway container is up)
+const jinaJobs: Map<string, JinaJob> = new Map();
+
+router.post('/api/pipeline/jina-queue', async (req, res) => {
+    try {
+        const { leads } = req.body; // Array of { id, website }
+        if (!leads || !Array.isArray(leads) || leads.length === 0) {
+            return res.status(400).json({ error: 'leads array required' });
+        }
+
+        // Generate a simple job ID
+        const jobId = `jina_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        
+        const job: JinaJob = {
+            id: jobId,
+            status: 'running',
+            total: leads.length,
+            processed: 0,
+            found: 0,
+            startedAt: new Date().toISOString(),
+        };
+        jinaJobs.set(jobId, job);
+
+        // Respond immediately — the browser can close now
+        res.json({ success: true, jobId, message: `Queued ${leads.length} leads for background processing.` });
+
+        // ===== BACKGROUND PROCESSING (runs after response is sent) =====
+        const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+        (async () => {
+            console.log(`[Jina Queue] Job ${jobId}: Starting background processing of ${leads.length} leads...`);
+            
+            for (let i = 0; i < leads.length; i++) {
+                const lead = leads[i];
+                try {
+                    if (!lead.website) {
+                        job.processed++;
+                        continue;
+                    }
+
+                    const email = await extractEmailJina(lead.website);
+                    
+                    // Persist directly to Supabase
+                    if (supabase && lead.id) {
+                        const patch: any = { serper_searched: true };
+                        if (email && email !== 'NULL') {
+                            patch.contact_email = email;
+                            job.found++;
+                        }
+                        await supabase.from('leads').update(patch).eq('id', lead.id);
+                    }
+
+                    job.processed++;
+                    
+                    // Log progress every 10 leads
+                    if (job.processed % 10 === 0 || job.processed === job.total) {
+                        console.log(`[Jina Queue] Job ${jobId}: ${job.processed}/${job.total} processed, ${job.found} emails found`);
+                    }
+
+                    // Polite delay between domains to respect Jina free tier
+                    await sleep(800);
+                    
+                } catch (err) {
+                    console.error(`[Jina Queue] Job ${jobId}: Failed for ${lead.website}:`, err);
+                    job.processed++;
+                    // Continue processing — don't let one failure kill the whole batch
+                }
+            }
+
+            job.status = 'done';
+            job.finishedAt = new Date().toISOString();
+            console.log(`[Jina Queue] Job ${jobId}: COMPLETE! ${job.found}/${job.total} emails found.`);
+            
+            // Clean up old jobs after 1 hour to prevent memory leaks
+            setTimeout(() => jinaJobs.delete(jobId), 60 * 60 * 1000);
+        })().catch(err => {
+            console.error(`[Jina Queue] Job ${jobId}: Fatal error:`, err);
+            job.status = 'error';
+            job.error = err.message;
+        });
+
+    } catch (error: any) {
+        console.error('Jina Queue Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Status polling endpoint — check progress when you reopen your laptop
+router.get('/api/pipeline/jina-queue/status', (req, res) => {
+    const jobId = req.query.jobId as string;
+    
+    if (jobId) {
+        const job = jinaJobs.get(jobId);
+        if (!job) return res.status(404).json({ error: 'Job not found or expired' });
+        return res.json(job);
+    }
+    
+    // If no jobId, return the latest active job (convenience)
+    const allJobs = Array.from(jinaJobs.values());
+    const activeJob = allJobs.find(j => j.status === 'running');
+    const latestJob = activeJob || allJobs[allJobs.length - 1];
+    
+    res.json(latestJob || { status: 'idle', message: 'No active or recent jobs.' });
+});
+
 // Deterministic Ad Detection: Scan raw HTML for Google Ads / GTM / AdSense / FB Pixel tags
 router.post('/api/pipeline/detect-ads-html', async (req, res) => {
     try {

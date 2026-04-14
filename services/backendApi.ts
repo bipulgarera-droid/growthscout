@@ -176,6 +176,29 @@ export const bulkFallbackEmail = async (leads: { id: string; website: string }[]
     return data.results;
 };
 
+// Background Jina Queue — fire-and-forget, server processes independently
+export const queueJinaEmail = async (leads: { id: string; website: string }[]): Promise<{ jobId: string; message: string }> => {
+    const response = await fetch(`${API_BASE}/pipeline/jina-queue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leads })
+    });
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to queue Jina job');
+    }
+    return response.json();
+};
+
+// Poll Jina Queue status
+export const getJinaQueueStatus = async (jobId?: string): Promise<any> => {
+    const url = jobId 
+        ? `${API_BASE}/pipeline/jina-queue/status?jobId=${jobId}`
+        : `${API_BASE}/pipeline/jina-queue/status`;
+    const response = await fetch(url);
+    return response.json();
+};
+
 // Email Discovery via Serper: queries Google for `domain "email"` and extracts from snippets
 export const bulkSerperEmail = async (leads: { id: string; website: string }[]): Promise<Record<string, string | null>> => {
     const response = await fetch(`${API_BASE}/pipeline/serper-email`, {

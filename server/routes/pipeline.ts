@@ -276,13 +276,27 @@ router.post('/api/pipeline/jina-queue', async (req, res) => {
                     const email = await extractEmailJina(lead.website);
                     
                     // Persist directly to Supabase
+                    // IMPORTANT: serper_searched lives INSIDE audit_data JSONB, NOT as a standalone column
                     if (supabase && lead.id) {
-                        const patch: any = { serper_searched: true };
+                        // Fetch current audit_data to merge into it
+                        const { data: existing } = await supabase
+                            .from('leads')
+                            .select('audit_data')
+                            .eq('id', lead.id)
+                            .single();
+                        
+                        const currentAuditData = existing?.audit_data || {};
+                        const patch: any = {
+                            audit_data: { ...currentAuditData, serper_searched: true },
+                        };
                         if (email && email !== 'NULL') {
                             patch.contact_email = email;
                             job.found++;
                         }
-                        await supabase.from('leads').update(patch).eq('id', lead.id);
+                        const { error: updateErr } = await supabase.from('leads').update(patch).eq('id', lead.id);
+                        if (updateErr) {
+                            console.error(`[Jina Queue] DB update FAILED for ${lead.id}:`, updateErr.message);
+                        }
                     }
 
                     job.processed++;
@@ -395,11 +409,23 @@ router.post('/api/pipeline/serper-email', async (req, res) => {
 
                 // ✅ Persist directly to Supabase — do not rely on the frontend to relay this back
                 if (supabase && lead.id) {
-                    const patch: any = { serper_searched: true };
+                    const { data: existing } = await supabase
+                        .from('leads')
+                        .select('audit_data')
+                        .eq('id', lead.id)
+                        .single();
+                    
+                    const currentAuditData = existing?.audit_data || {};
+                    const patch: any = {
+                        audit_data: { ...currentAuditData, serper_searched: true },
+                    };
                     if (foundEmail && foundEmail !== 'NULL') {
                         patch.contact_email = foundEmail;
                     }
-                    await supabase.from('leads').update(patch).eq('id', lead.id);
+                    const { error: updateErr } = await supabase.from('leads').update(patch).eq('id', lead.id);
+                    if (updateErr) {
+                        console.error(`[Serper] DB update FAILED for ${lead.id}:`, updateErr.message);
+                    }
                 }
 
             } catch (e) {

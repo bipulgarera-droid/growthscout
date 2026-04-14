@@ -1,7 +1,7 @@
 # ---- Build Stage ----
 FROM node:20-slim AS builder
 
-RUN apt-get update && apt-get install -y curl ca-certificates --no-install-recommends && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y curl ca-certificates python3 python3-pip --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -17,10 +17,13 @@ RUN npm run build
 # ---- Production Stage ----
 FROM node:20-slim
 
-# Install Chromium dependencies for Puppeteer and curl for the downloader
+# Install Chromium dependencies for Puppeteer, curl, and python3 for duckduckgo-search
 RUN apt-get update && apt-get install -y \
     curl \
     ca-certificates \
+    python3 \
+    python3-pip \
+    python3-venv \
     chromium \
     fonts-liberation \
     libatk-bridge2.0-0 \

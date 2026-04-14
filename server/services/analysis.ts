@@ -397,7 +397,7 @@ export const extractEmailJina = async (websiteUrl: string): Promise<string | nul
 
             // Try paths SEQUENTIALLY to avoid rate-limiting Jina unauthenticated tier.
             // Stop early once we've gathered enough content to find an email.
-            const contactPaths = ['', '/contact', '/contact-us', '/about', '/about-us'];
+            const contactPaths = ['', '/contact', '/contact-us', '/about', '/about-us', '/connect', '/connect-with-us'];
             for (const p of contactPaths) {
                 try {
                     const resp = await fetch(`https://r.jina.ai/${cleanBase}${p}`);
@@ -422,7 +422,7 @@ export const extractEmailJina = async (websiteUrl: string): Promise<string | nul
             try {
                 const urlObj2 = new URL(websiteUrl);
                 const cleanBase2 = urlObj2.origin + urlObj2.pathname.replace(/\/$/, '');
-                const directPaths = ['', '/contact', '/contact-us', '/about'];
+                const directPaths = ['', '/contact', '/contact-us', '/about', '/connect'];
                 const emailRegexDirect = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z]{2,})/gi;
                 const browserHeaders = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',

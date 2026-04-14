@@ -28,6 +28,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
   const [filterWebsite, setFilterWebsite] = useState<'both'|'has'|'doesnt'>('both');
   const [filterAds, setFilterAds] = useState<'both'|'yes'|'no'>('both');
   const [filterEmail, setFilterEmail] = useState<'both'|'yes'|'no'>('both');
+  const [filterEmailChecked, setFilterEmailChecked] = useState<'both'|'yes'|'no'>('both');
   const [filterPhone, setFilterPhone] = useState<'both'|'yes'|'no'>('both');
   const [filterScore, setFilterScore] = useState<'both'|'below50'|'above50'>('both');
   const [filterReviewCount, setFilterReviewCount] = useState<'both'|'below50'|'above50'>('both');
@@ -292,53 +293,61 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
             return;
         }
 
-        setStatusText(`Jina scraping ${payload.length} website(s)...`);
-        const emailData = await bulkFallbackEmail(payload);
+        setStatusText(`Jina scraping ${payload.length} website(s) in batches...`);
+        const BATCH_SIZE = 15; // Jina allows 200/min. Running 15 domains synchronously in backend takes time, so 15 per proxy POST is safe and won't timeout Railway 100s limit.
+        let currentResults = [...results];
 
-        
-        const newResults = results.map(r => {
-            // Did we check this specific business in this run?
-            const wasChecked = payload.some(p => p.id === r.id);
-            
-            if (wasChecked) {
-                if (emailData[r.id] && emailData[r.id] !== 'NULL') {
-                    // Found a real email — use it
-                    return { ...r, contactEmail: emailData[r.id], serperSearched: true };
-                } else if (forceRecheck) {
-                    // Force checked: returned nothing, explicitly clear any hallucinated email
-                    return { ...r, contactEmail: null as any, serperSearched: true };
-                } else {
-                    return { ...r, serperSearched: true };
-                }
-            }
-            return r;
-        });
-        setResults(newResults);
-        
-        // For records where email was wiped (force recheck + no result), PATCH them directly in Supabase
-        // Don't rely only on bulk sync which may not overwrite with null reliably
-        const wipedIds = payload
-            .filter(p => forceRecheck && (!emailData[p.id] || emailData[p.id] === 'NULL'))
-            .map(p => p.id);
-        
-        await Promise.allSettled([
-            syncBusinessesToDB(newResults),
-            ...wipedIds.map(id => updateBusinessInDB(id, { contactEmail: null as any }))
-        ]);
+        for (let i = 0; i < payload.length; i += BATCH_SIZE) {
+            const batch = payload.slice(i, i + BATCH_SIZE);
+            const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+            const totalBatches = Math.ceil(payload.length / BATCH_SIZE);
+            setStatusText(`Jina batch ${batchNum}/${totalBatches} (${i + 1}–${Math.min(i + BATCH_SIZE, payload.length)} of ${payload.length})...`);
 
-        if (onUpdateResult) {
-            newResults.forEach(nr => {
-                const wasChecked = payload.some(p => p.id === nr.id);
-                if (wasChecked) {
-                    if (emailData[nr.id] && emailData[nr.id] !== 'NULL') {
-                        onUpdateResult(nr.id, { contactEmail: emailData[nr.id] });
-                    } else if (forceRecheck) {
-                        onUpdateResult(nr.id, { contactEmail: null as any });
+            try {
+                const emailData = await bulkFallbackEmail(batch);
+                const wipedIds = batch
+                    .filter(p => forceRecheck && (!emailData[p.id] || emailData[p.id] === 'NULL'))
+                    .map(p => p.id);
+
+                currentResults = currentResults.map(r => {
+                    const wasChecked = batch.some(p => p.id === r.id);
+                    if (wasChecked) {
+                        if (emailData[r.id] && emailData[r.id] !== 'NULL') {
+                            return { ...r, contactEmail: emailData[r.id], serperSearched: true };
+                        } else if (forceRecheck) {
+                            return { ...r, contactEmail: null as any, serperSearched: true };
+                        } else {
+                            return { ...r, serperSearched: true };
+                        }
                     }
+                    return r;
+                });
+                
+                setResults([...currentResults]);
+                
+                const batchBusinesses = currentResults.filter(r => batch.some(p => p.id === r.id));
+                await Promise.allSettled([
+                    syncBusinessesToDB(batchBusinesses),
+                    ...wipedIds.map(id => updateBusinessInDB(id, { contactEmail: null as any }))
+                ]);
+
+                if (onUpdateResult) {
+                    currentResults.forEach(nr => {
+                        const wasChecked = batch.some(p => p.id === nr.id);
+                        if (wasChecked) {
+                            if (emailData[nr.id] && emailData[nr.id] !== 'NULL') {
+                                onUpdateResult(nr.id, { contactEmail: emailData[nr.id] });
+                            } else if (forceRecheck) {
+                                onUpdateResult(nr.id, { contactEmail: null as any });
+                            }
+                        }
+                    });
                 }
-            });
+            } catch (batchErr) {
+                console.error(`Jina Batch ${batchNum} failed:`, batchErr);
+            }
+            await new Promise(r => setTimeout(r, 1000));
         }
-        
         setStatusText('Jina Email Scrape complete.');
     } catch (e: any) {
         console.error(e);
@@ -579,6 +588,9 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
         if (filterEmail === 'yes' && !(r.contactEmail || r.email)) return false;
         if (filterEmail === 'no' && (r.contactEmail || r.email)) return false;
         
+        if (filterEmailChecked === 'yes' && !r.serperSearched) return false;
+        if (filterEmailChecked === 'no' && r.serperSearched) return false;
+        
         if (filterPhone === 'yes' && !r.phone) return false;
         if (filterPhone === 'no' && r.phone) return false;
 
@@ -599,7 +611,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
         });
     }
     return list;
-  }, [results, filterWebsite, filterAds, filterEmail, filterPhone, filterScore, filterReviewCount, sortBy, sortDir]);
+  }, [results, filterWebsite, filterAds, filterEmail, filterEmailChecked, filterPhone, filterScore, filterReviewCount, sortBy, sortDir]);
 
   const averageReviews = useMemo(() => {
       if (results.length === 0) return 0;
@@ -765,6 +777,12 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                   <option value="both">Email: Both</option>
                   <option value="yes">Has Email</option>
                   <option value="no">No Email</option>
+              </select>
+
+              <select className="text-sm border rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-brand-500" value={filterEmailChecked} onChange={e=>setFilterEmailChecked(e.target.value as any)}>
+                  <option value="both">Email Checked: Both</option>
+                  <option value="yes">Is Checked</option>
+                  <option value="no">Not Checked</option>
               </select>
               
               <select className="text-sm border rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-brand-500" value={filterPhone} onChange={e=>setFilterPhone(e.target.value as any)}>

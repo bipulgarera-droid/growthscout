@@ -389,23 +389,57 @@ export const extractEmailJina = async (websiteUrl: string): Promise<string | nul
         
         let pageContent = '';
         try {
-            // Ensure URL doesn't end with slash for clean path appending
             const rawBase = websiteUrl.endsWith('/') ? websiteUrl.slice(0, -1) : websiteUrl;
-            // Only use base URL without query params for sub-path fetching
             const urlObj = new URL(rawBase);
             const cleanBase = urlObj.origin + urlObj.pathname.replace(/\/$/, '');
 
-            // Try paths SEQUENTIALLY to avoid rate-limiting Jina unauthenticated tier.
-            // Stop early once we've gathered enough content to find an email.
-            const contactPaths = ['', '/contact', '/contact-us', '/about', '/about-us', '/connect', '/connect-with-us'];
-            for (const p of contactPaths) {
+            // Base standard paths, but we will dynamically discover weird ones
+            const contactPaths = new Set(['', '/contact', '/contact-us', '/about', '/about-us']);
+            
+            // First fetch the homepage via Jina to look for emails AND dynamic contact links
+            try {
+                const homeResp = await fetch(`https://r.jina.ai/${cleanBase}`);
+                if (homeResp.ok) {
+                    const homeText = await homeResp.text();
+                    if (homeText && homeText.length > 20) {
+                        pageContent += '\n\n' + homeText;
+                        
+                        // Extract Markdown links (e.g. [Let's Connect](/reach-out) )
+                        const linkRegex = /\]\(([^)]+)\)/g;
+                        let match;
+                        while ((match = linkRegex.exec(homeText)) !== null) {
+                            const href = match[1].toLowerCase().trim();
+                            if (href.includes('contact') || href.includes('about') || href.includes('connect') || href.includes('reach') || href.includes('hello')) {
+                                // Ignore emailto and tel links
+                                if (href.startsWith('mailto:') || href.startsWith('tel:')) continue;
+                                
+                                if (href.startsWith('http')) {
+                                    if (href.includes(urlObj.hostname)) {
+                                        try { contactPaths.add(new URL(href).pathname); } catch(e){}
+                                    }
+                                } else if (href.startsWith('/')) {
+                                    contactPaths.add(href);
+                                } else {
+                                    // Relative paths like "contact-us.html" -> "/contact-us.html"
+                                    contactPaths.add('/' + href);
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (_) { /* Skip if homepage totally fails */ }
+
+            // Try sequentially (including the dynamically found paths).
+            for (const p of Array.from(contactPaths)) {
+                // We already fetched the homepage (''), so skip fetching it again unless pageContent is empty
+                if (p === '' && pageContent.length > 20) continue;
+                
                 try {
                     const resp = await fetch(`https://r.jina.ai/${cleanBase}${p}`);
                     if (resp.ok) {
                         const text = await resp.text();
-                        if (text && text.length > 100) {
+                        if (text && text.length > 50) {
                             pageContent += '\n\n' + text;
-                            // Early exit: if we already have a clear email pattern, stop fetching more pages
                             if (/[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+/.test(text)) break;
                         }
                     }
@@ -417,11 +451,10 @@ export const extractEmailJina = async (websiteUrl: string): Promise<string | nul
 
         if (!pageContent || pageContent.length < 50) {
             console.log(`[Email Fallback] Jina insufficient for ${websiteUrl} — trying direct HTTP fetch...`);
-            // Fallback: Directly fetch the raw HTML and regex for emails
-            // This catches sites that block Jina but serve content to regular browsers
             try {
                 const urlObj2 = new URL(websiteUrl);
                 const cleanBase2 = urlObj2.origin + urlObj2.pathname.replace(/\/$/, '');
+                // Basic fallbacks for direct fetch
                 const directPaths = ['', '/contact', '/contact-us', '/about', '/connect'];
                 const emailRegexDirect = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z]{2,})/gi;
                 const browserHeaders = {

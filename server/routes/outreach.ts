@@ -41,14 +41,21 @@ router.post('/api/push-to-outreach', async (req, res) => {
             return res.status(400).json({ error: 'outreachProjectId required' });
         }
 
-        // Fetch full lead data from our Supabase
-        const { data: leads, error: fetchError } = await supabase
-            .from('leads')
-            .select('*')
-            .in('id', leadIds);
+        // Fetch full lead data from our Supabase IN BATCHES
+        // PostgREST encodes .in() filter in URL — 665 UUIDs = ~24KB URL which exceeds limits
+        const FETCH_BATCH = 100;
+        let leads: any[] = [];
+        for (let i = 0; i < leadIds.length; i += FETCH_BATCH) {
+            const idBatch = leadIds.slice(i, i + FETCH_BATCH);
+            const { data, error: fetchError } = await supabase
+                .from('leads')
+                .select('*')
+                .in('id', idBatch);
+            if (fetchError) throw fetchError;
+            if (data) leads = leads.concat(data);
+        }
 
-        if (fetchError) throw fetchError;
-        if (!leads || leads.length === 0) {
+        if (leads.length === 0) {
             return res.status(404).json({ error: 'No leads found for the given IDs' });
         }
 

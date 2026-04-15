@@ -623,4 +623,249 @@ router.delete('/api/pipeline/leads', async (req, res) => {
     }
 });
 
+
+// ===== AUTOMATED DAILY SCRAPING CRON =====
+// Railway cron hits this endpoint on schedule (e.g., 0 6 * * * = 6AM daily).
+// Picks random city + niche → scrapes via Gosom → saves to DB → queues Jina emails.
+
+// Config: update these arrays with your targets
+const AUTO_SCRAPE_CONFIG = {
+    cities: [
+        // User will fill these in — placeholder examples
+        'Austin, TX',
+        'Dallas, TX',
+        'Houston, TX',
+        'San Antonio, TX',
+        'Denver, CO',
+    ],
+    niches: [
+        // User will fill these in — placeholder examples  
+        'web designers',
+        'graphic designers',
+        'landscapers',
+        'dentists',
+        'med spas',
+    ],
+    targetCount: 1000,
+    projectId: '', // User will set this — the project to dump leads into
+    notificationEmail: '', // User will set this for email alerts
+};
+
+router.post('/api/pipeline/auto-daily', async (req, res) => {
+    // Protect with a secret so only Railway cron (or you) can trigger it
+    const cronSecret = req.headers['x-cron-secret'] || req.query.secret;
+    const expectedSecret = process.env.CRON_SECRET || 'growthscout-auto-2026';
+    if (cronSecret !== expectedSecret) {
+        return res.status(401).json({ error: 'Unauthorized. Set x-cron-secret header.' });
+    }
+
+    // Allow overrides via request body, otherwise use config
+    const cities = req.body.cities || AUTO_SCRAPE_CONFIG.cities;
+    const niches = req.body.niches || AUTO_SCRAPE_CONFIG.niches;
+    const targetCount = req.body.targetCount || AUTO_SCRAPE_CONFIG.targetCount;
+    const projectId = req.body.projectId || AUTO_SCRAPE_CONFIG.projectId;
+    const notificationEmail = req.body.notificationEmail || AUTO_SCRAPE_CONFIG.notificationEmail;
+
+    if (!cities.length || !niches.length) {
+        return res.status(400).json({ error: 'No cities or niches configured.' });
+    }
+
+    // Pick random city and niche
+    const city = cities[Math.floor(Math.random() * cities.length)];
+    const niche = niches[Math.floor(Math.random() * niches.length)];
+
+    const jobSummary = {
+        city,
+        niche,
+        targetCount,
+        projectId,
+        startedAt: new Date().toISOString(),
+        status: 'started',
+        leadsScraped: 0,
+        jinaJobId: null as string | null,
+        error: null as string | null,
+    };
+
+    // Respond immediately so Railway cron doesn't timeout
+    res.json({ success: true, message: `Auto-scrape started: ${niche} in ${city}`, job: jobSummary });
+
+    // ===== BACKGROUND: Scrape → Save → Queue Jina =====
+    (async () => {
+        const logs: string[] = [];
+        const log = (msg: string) => { console.log(`[AutoDaily] ${msg}`); logs.push(msg); };
+        
+        try {
+            log(`Starting: ${niche} in ${city} (target: ${targetCount})`);
+
+            // Step 1: Run Gosom scraping pipeline
+            const result = await runScrapingPipeline(niche, city, targetCount, projectId || undefined, (chunk) => {
+                log(chunk);
+            });
+
+            if (!result.success || !result.records || result.records.length === 0) {
+                log('Gosom scraping returned 0 results. Aborting.');
+                jobSummary.status = 'failed';
+                jobSummary.error = 'No results from scraper';
+                await sendAutoNotification(notificationEmail, jobSummary, logs);
+                return;
+            }
+
+            log(`Gosom found ${result.records.length} raw records. Saving to Supabase...`);
+
+            // Step 2: Save leads to Supabase (same logic as /stream endpoint)
+            const { randomUUID } = await import('crypto');
+            const bRecords = result.records
+                .filter((r: any) => r.name && r.name.trim().length > 0)
+                .map((r: any) => ({
+                    id: randomUUID(),
+                    name: r.name,
+                    address: r.address,
+                    website: r.website || '',
+                    phone: r.phone || '',
+                    rating: r.score || 0,
+                    reviewCount: r.reviews || 0,
+                    category: r.niche || niche,
+                    contactEmail: r.email || '',
+                    status: 'new',
+                    qualityScore: 0,
+                    projectId: projectId || undefined,
+                    source: 'auto-daily',
+                    searchQuery: niche,
+                    searchLocation: city,
+                }));
+
+            const { bulkSaveBusinesses } = await import('../services/persistence.js');
+            await bulkSaveBusinesses(bRecords);
+            jobSummary.leadsScraped = bRecords.length;
+            log(`Saved ${bRecords.length} leads to Supabase.`);
+
+            // Step 3: Queue leads with websites for Jina email extraction
+            const jinaPayload = bRecords
+                .filter((r: any) => r.website && r.website.length > 5)
+                .filter((r: any) => {
+                    const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'thumbtack.com', 'angi.com'];
+                    return !junkDomains.some(d => r.website.includes(d));
+                })
+                .map((r: any) => ({ id: r.id, website: r.website }));
+
+            if (jinaPayload.length > 0) {
+                log(`Queuing ${jinaPayload.length} leads for Jina email extraction...`);
+                
+                // Reuse the same background queue logic
+                const jinaJobId = `jina_auto_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+                const jinaJob: JinaJob = {
+                    id: jinaJobId,
+                    status: 'running',
+                    total: jinaPayload.length,
+                    processed: 0,
+                    found: 0,
+                    startedAt: new Date().toISOString(),
+                };
+                jinaJobs.set(jinaJobId, jinaJob);
+                jobSummary.jinaJobId = jinaJobId;
+
+                // Fire Jina processing in parallel (don't await — let it run)
+                const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+                (async () => {
+                    for (const lead of jinaPayload) {
+                        try {
+                            if (!lead.website) { jinaJob.processed++; continue; }
+                            const email = await extractEmailJina(lead.website);
+                            
+                            if (supabase && lead.id) {
+                                const { data: existing } = await supabase
+                                    .from('leads')
+                                    .select('audit_data')
+                                    .eq('id', lead.id)
+                                    .single();
+                                
+                                const currentAuditData = existing?.audit_data || {};
+                                const patch: any = {
+                                    audit_data: { ...currentAuditData, serper_searched: true },
+                                };
+                                if (email && email !== 'NULL') {
+                                    patch.contact_email = email;
+                                    jinaJob.found++;
+                                }
+                                const { error: updateErr } = await supabase.from('leads').update(patch).eq('id', lead.id);
+                                if (updateErr) console.error(`[AutoDaily Jina] DB update FAILED for ${lead.id}:`, updateErr.message);
+                            }
+                            jinaJob.processed++;
+                            if (jinaJob.processed % 25 === 0) {
+                                log(`Jina progress: ${jinaJob.processed}/${jinaJob.total}, ${jinaJob.found} emails found`);
+                            }
+                            await sleep(800);
+                        } catch (err) {
+                            jinaJob.processed++;
+                        }
+                    }
+                    jinaJob.status = 'done';
+                    jinaJob.finishedAt = new Date().toISOString();
+                    log(`Jina COMPLETE: ${jinaJob.found}/${jinaJob.total} emails found.`);
+                    
+                    // Send final notification after Jina finishes
+                    jobSummary.status = 'complete';
+                    await sendAutoNotification(notificationEmail, jobSummary, logs);
+                    
+                    setTimeout(() => jinaJobs.delete(jinaJobId), 60 * 60 * 1000);
+                })();
+            } else {
+                log('No leads with valid websites for Jina. Skipping email extraction.');
+                jobSummary.status = 'complete';
+                await sendAutoNotification(notificationEmail, jobSummary, logs);
+            }
+
+        } catch (err: any) {
+            log(`FATAL ERROR: ${err.message}`);
+            jobSummary.status = 'failed';
+            jobSummary.error = err.message;
+            await sendAutoNotification(notificationEmail, jobSummary, logs);
+        }
+    })();
+});
+
+// Simple email notification via Resend or fallback console log
+async function sendAutoNotification(email: string, summary: any, logs: string[]) {
+    const subject = summary.status === 'complete' 
+        ? `✅ GrowthScout Auto: ${summary.leadsScraped} ${summary.niche} scraped in ${summary.city}`
+        : `❌ GrowthScout Auto Failed: ${summary.niche} in ${summary.city}`;
+    
+    const body = [
+        `Status: ${summary.status}`,
+        `City: ${summary.city}`,
+        `Niche: ${summary.niche}`,
+        `Leads Scraped: ${summary.leadsScraped}`,
+        summary.jinaJobId ? `Jina Job: ${summary.jinaJobId} (emails processing in background)` : '',
+        summary.error ? `Error: ${summary.error}` : '',
+        '',
+        '--- Logs ---',
+        ...logs.slice(-20), // Last 20 log lines
+    ].filter(Boolean).join('\n');
+
+    console.log(`[AutoDaily Notification] ${subject}\n${body}`);
+
+    // If RESEND_API_KEY is set, send a real email
+    const resendKey = process.env.RESEND_API_KEY;
+    if (resendKey && email) {
+        try {
+            await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${resendKey}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    from: 'GrowthScout <onboarding@resend.dev>',
+                    to: [email],
+                    subject,
+                    text: body,
+                }),
+            });
+            console.log(`[AutoDaily] Email notification sent to ${email}`);
+        } catch (e) {
+            console.error('[AutoDaily] Email notification failed:', e);
+        }
+    }
+}
+
 export default router;

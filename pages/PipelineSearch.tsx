@@ -93,7 +93,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
   };
 
   const startPipeline = () => {
-    if (!service || !city) return;
+    if (!service || (!city && !customPostalCodes.trim())) return;
     setIsScraping(true);
     setStatusText('Routing directly to background scraper engine...');
     setResults([]);

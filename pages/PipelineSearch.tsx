@@ -653,7 +653,7 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
           </div>
           <button
             onClick={startPipeline}
-            disabled={isScraping || !service || !city}
+            disabled={isScraping || !service || (!city && !customPostalCodes.trim())}
             className="w-full md:w-auto bg-brand-600 justify-center text-white px-5 py-2 rounded-xl text-sm font-semibold hover:bg-brand-700 disabled:opacity-50 flex items-center gap-2 shadow-sm transition-all shadow-brand-500/20 active:scale-95"
           >
             {isScraping ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}

@@ -128,27 +128,46 @@ router.post('/api/push-to-outreach', async (req, res) => {
             };
         });
 
-        // POST to Outreach's import endpoint
-        const response = await fetch(`${OUTREACH_API_URL}/api/import-leads`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                project_id: outreachProjectId,
-                leads: mappedLeads
-            })
-        });
+        // POST to Outreach's import endpoint IN BATCHES to avoid payload size limits
+        // 665 leads with full audit_data can exceed Railway/Gunicorn body limit
+        const BATCH_SIZE = 100;
+        let totalImported = 0;
+        let totalSkipped = 0;
+        let totalErrors = 0;
 
-        if (!response.ok) {
-            const errText = await response.text();
-            throw new Error(`Outreach API error (${response.status}): ${errText}`);
+        for (let i = 0; i < mappedLeads.length; i += BATCH_SIZE) {
+            const batch = mappedLeads.slice(i, i + BATCH_SIZE);
+            const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+            const totalBatches = Math.ceil(mappedLeads.length / BATCH_SIZE);
+            console.log(`[Push to Outreach] Sending batch ${batchNum}/${totalBatches} (${batch.length} leads)...`);
+            
+            const response = await fetch(`${OUTREACH_API_URL}/api/import-leads`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    project_id: outreachProjectId,
+                    leads: batch
+                })
+            });
+
+            if (!response.ok) {
+                const errText = await response.text();
+                console.error(`[Push to Outreach] Batch ${batchNum} failed (${response.status}): ${errText}`);
+                totalErrors += batch.length;
+                continue; // Don't abort entire push for one failed batch
+            }
+
+            const batchResult = await response.json();
+            totalImported += batchResult.imported || 0;
+            totalSkipped += batchResult.skipped || 0;
         }
-
-        const result = await response.json();
 
         res.json({
             success: true,
-            ...result,
-            message: `Pushed ${result.imported || 0} leads to Outreach (${result.skipped || 0} skipped as duplicates)`
+            imported: totalImported,
+            skipped: totalSkipped,
+            errors: totalErrors,
+            message: `Pushed ${totalImported} leads to Outreach (${totalSkipped} skipped as duplicates${totalErrors ? `, ${totalErrors} errors` : ''})`
         });
 
     } catch (error: any) {

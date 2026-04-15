@@ -14,8 +14,8 @@ router.get('/api/pipeline/stream', async (req, res) => {
     const customCodesRaw = req.query.customPostalCodes as string;
     const customPostalCodes = customCodesRaw ? customCodesRaw.split(',').map(c => c.trim()).filter(Boolean) : undefined;
     
-    if (!service || !city) {
-        res.status(400).json({ error: 'Service and city required.' });
+    if (!service || (!city && (!customPostalCodes || customPostalCodes.length === 0))) {
+        res.status(400).json({ error: 'Service and either city or custom postal codes required.' });
         return;
     }
 

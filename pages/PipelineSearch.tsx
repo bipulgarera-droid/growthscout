@@ -113,7 +113,9 @@ export default function PipelineSearch({ initialResults = [], projectId, onUpdat
                     // Update our view, but let App.tsx auto-sync take care of DB persistence naturally
                     setResults(prev => {
                         const existingNames = new Set(prev.map(p => p.name.toLowerCase()));
-                        const newOnes = resultData.records.filter((r: any) => !existingNames.has(r.name.toLowerCase()));
+                        const newOnes = resultData.records
+                            .filter((r: any) => !existingNames.has(r.name.toLowerCase()))
+                            .map((r: any) => ({ ...r, id: r.id || crypto.randomUUID() }));
                         return [...newOnes, ...prev];
                     });
                     setStatusText(`Complete. Loaded ${resultData.records.length} businesses.`);

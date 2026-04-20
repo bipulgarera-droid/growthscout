@@ -254,7 +254,7 @@ export const saveBusiness = async (business: Business): Promise<boolean> => {
             'apikey': SUPABASE_KEY,
             'Authorization': `Bearer ${SUPABASE_KEY}`,
             'Content-Type': 'application/json',
-            'Prefer': 'resolution=merge-duplicates'
+            'Prefer': 'resolution=ignore-duplicates'
         },
         body: JSON.stringify(row)
     });
@@ -308,7 +308,7 @@ export const bulkSaveBusinesses = async (businesses: Business[]): Promise<{ save
             'apikey': SUPABASE_KEY,
             'Authorization': `Bearer ${SUPABASE_KEY}`,
             'Content-Type': 'application/json',
-            'Prefer': 'resolution=merge-duplicates'
+            'Prefer': 'resolution=ignore-duplicates'
         },
         body: JSON.stringify(uniformRows)
     });
@@ -456,7 +456,7 @@ export const savePreview = async (data: PreviewData) => {
             'apikey': SUPABASE_KEY,
             'Authorization': `Bearer ${SUPABASE_KEY}`,
             'Content-Type': 'application/json',
-            'Prefer': 'resolution=merge-duplicates'
+            'Prefer': 'resolution=ignore-duplicates'
         },
         body: JSON.stringify(data)
     });

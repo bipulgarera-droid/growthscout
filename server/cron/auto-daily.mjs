@@ -17,12 +17,12 @@
  */
 
 const WEB_URL = process.env.WEB_SERVICE_URL 
-    || process.env.RAILWAY_PUBLIC_DOMAIN 
-    ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
-    : 'http://web.railway.internal:5001';
+    || (process.env.RAILWAY_PUBLIC_DOMAIN 
+        ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+        : 'http://web.railway.internal:5001');
 
 const CRON_SECRET = process.env.CRON_SECRET || 'growthscout-auto-2026';
-const TARGET_COUNT = parseInt(process.env.CRON_TARGET_COUNT || '500');
+const TARGET_COUNT = parseInt(process.env.CRON_TARGET_COUNT || '1000');
 
 async function main() {
     const endpoint = `${WEB_URL}/api/pipeline/auto-daily`;

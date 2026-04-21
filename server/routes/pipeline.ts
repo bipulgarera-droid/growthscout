@@ -750,7 +750,6 @@ router.post('/api/pipeline/auto-daily', async (req, res) => {
             log(`Gosom found ${result.records.length} raw records. Saving to Supabase...`);
 
             // Step 2: Save leads to Supabase (same logic as /stream endpoint)
-            const { randomUUID } = await import('crypto');
             const bRecords = result.records
                 .filter((r: any) => r.name && r.name.trim().length > 0)
                 .map((r: any) => ({

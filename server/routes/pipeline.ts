@@ -628,27 +628,40 @@ router.delete('/api/pipeline/leads', async (req, res) => {
 // Railway cron hits this endpoint on schedule (e.g., 0 6 * * * = 6AM daily).
 // Picks random city + niche → scrapes via Gosom → saves to DB → queues Jina emails.
 
-// Config: update these arrays with your targets
+// Config: real target locations and service niches
 const AUTO_SCRAPE_CONFIG = {
     cities: [
-        // User will fill these in — placeholder examples
+        // Tier 1 — Sun Belt growth cities (high response probability)
         'Austin, TX',
         'Dallas, TX',
-        'Houston, TX',
-        'San Antonio, TX',
+        'Nashville, TN',
+        'Phoenix, AZ',
+        'Tampa, FL',
+        'Charlotte, NC',
         'Denver, CO',
+        'Atlanta, GA',
+        // Tier 2 — Lower agency saturation, solid response
+        'Raleigh, NC',
+        'Salt Lake City, UT',
+        'San Antonio, TX',
+        'Jacksonville, FL',
+        'Columbus, OH',
+        'Boise, ID',
     ],
     niches: [
-        // User will fill these in — placeholder examples  
-        'web designers',
-        'graphic designers',
-        'landscapers',
         'dentists',
         'med spas',
+        'roofing contractors',
+        'HVAC contractors',
+        'landscaping companies',
+        'real estate agents',
+        'chiropractors',
+        'plumbers',
+        'auto repair shops',
+        'personal injury lawyers',
     ],
     targetCount: 1000,
-    projectId: '', // User will set this — the project to dump leads into
-    notificationEmail: '', // User will set this for email alerts
+    notificationEmail: '', // Set via env CRON_NOTIFY_EMAIL or request body
 };
 
 router.post('/api/pipeline/auto-daily', async (req, res) => {
@@ -663,8 +676,7 @@ router.post('/api/pipeline/auto-daily', async (req, res) => {
     const cities = req.body.cities || AUTO_SCRAPE_CONFIG.cities;
     const niches = req.body.niches || AUTO_SCRAPE_CONFIG.niches;
     const targetCount = req.body.targetCount || AUTO_SCRAPE_CONFIG.targetCount;
-    const projectId = req.body.projectId || AUTO_SCRAPE_CONFIG.projectId;
-    const notificationEmail = req.body.notificationEmail || AUTO_SCRAPE_CONFIG.notificationEmail;
+    const notificationEmail = req.body.notificationEmail || AUTO_SCRAPE_CONFIG.notificationEmail || process.env.CRON_NOTIFY_EMAIL || '';
 
     if (!cities.length || !niches.length) {
         return res.status(400).json({ error: 'No cities or niches configured.' });
@@ -678,7 +690,7 @@ router.post('/api/pipeline/auto-daily', async (req, res) => {
         city,
         niche,
         targetCount,
-        projectId,
+        projectId: '' as string,
         startedAt: new Date().toISOString(),
         status: 'started',
         leadsScraped: 0,
@@ -689,12 +701,37 @@ router.post('/api/pipeline/auto-daily', async (req, res) => {
     // Respond immediately so Railway cron doesn't timeout
     res.json({ success: true, message: `Auto-scrape started: ${niche} in ${city}`, job: jobSummary });
 
-    // ===== BACKGROUND: Scrape → Save → Queue Jina =====
+    // ===== BACKGROUND: Create Project → Scrape → Save → Queue Jina =====
     (async () => {
         const logs: string[] = [];
         const log = (msg: string) => { console.log(`[AutoDaily] ${msg}`); logs.push(msg); };
         
         try {
+            // Step 0: Auto-create a new GrowthScout project for this run
+            const { randomUUID } = await import('crypto');
+            const dateStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+            const projectName = `[Auto] ${niche} in ${city} - ${dateStr}`;
+            const newProjectId = randomUUID();
+
+            log(`Creating project: "${projectName}"...`);
+            const { error: projErr } = await supabase.from('projects').insert({
+                id: newProjectId,
+                name: projectName,
+                status: 'active',
+            });
+
+            if (projErr) {
+                log(`Failed to create project: ${projErr.message}`);
+                jobSummary.status = 'failed';
+                jobSummary.error = `Project creation failed: ${projErr.message}`;
+                await sendAutoNotification(notificationEmail, jobSummary, logs);
+                return;
+            }
+
+            const projectId = newProjectId;
+            jobSummary.projectId = projectId;
+            log(`Project created: ${projectName} (${projectId})`);
+
             log(`Starting: ${niche} in ${city} (target: ${targetCount})`);
 
             // Step 1: Run Gosom scraping pipeline

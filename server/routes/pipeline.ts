@@ -649,16 +649,23 @@ const AUTO_SCRAPE_CONFIG = {
         'Boise, ID',
     ],
     niches: [
-        'dentists',
-        'med spas',
-        'roofing contractors',
-        'HVAC contractors',
-        'landscaping companies',
-        'real estate agents',
-        'chiropractors',
-        'plumbers',
-        'auto repair shops',
-        'personal injury lawyers',
+        'Lawyers',
+        'Recruiting firms',
+        'Medical and health services',
+        'Real estate',
+        'Architects',
+        'Event management',
+        'Marketing Agency',
+        'Web Developers',
+        'Interior design services',
+        'Food wholesalers',
+        'Healthcare Facilities',
+        'Manufacturing & Fabrication',
+        'Transportation & Freight',
+        'Advertising & PR',
+        'Equipment Services',
+        'Mental Healthcare',
+        'Counseling & therapy clinics',
     ],
     targetCount: 1000,
     notificationEmail: '', // Set via env CRON_NOTIFY_EMAIL or request body
@@ -717,7 +724,6 @@ router.post('/api/pipeline/auto-daily', async (req, res) => {
             const { error: projErr } = await supabase.from('projects').insert({
                 id: newProjectId,
                 name: projectName,
-                status: 'active',
             });
 
             if (projErr) {

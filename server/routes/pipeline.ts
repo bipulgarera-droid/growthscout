@@ -689,9 +689,48 @@ router.post('/api/pipeline/auto-daily', async (req, res) => {
         return res.status(400).json({ error: 'No cities or niches configured.' });
     }
 
-    // Pick random city and niche
-    const city = cities[Math.floor(Math.random() * cities.length)];
-    const niche = niches[Math.floor(Math.random() * niches.length)];
+    // === Deduplication: skip niche+city combos that already have an [Auto] project ===
+    const { data: existingProjects } = await supabase
+        .from('projects')
+        .select('name')
+        .like('name', '[Auto]%');
+
+    // Parse already-done combos from project names like "[Auto] Lawyers in Austin, TX - 2026-04-22"
+    const doneCombos = new Set<string>();
+    for (const p of (existingProjects || [])) {
+        const match = p.name.match(/^\[Auto\]\s+(.+?)\s+in\s+(.+?)\s+-\s+/);
+        if (match) {
+            doneCombos.add(`${match[1].toLowerCase()}|||${match[2].toLowerCase()}`);
+        }
+    }
+
+    // Build pool of remaining combos
+    const remaining: Array<{ niche: string; city: string }> = [];
+    for (const niche of niches) {
+        for (const city of cities) {
+            const key = `${niche.toLowerCase()}|||${city.toLowerCase()}`;
+            if (!doneCombos.has(key)) {
+                remaining.push({ niche, city });
+            }
+        }
+    }
+
+    const totalCombos = niches.length * cities.length;
+    console.log(`[AutoDaily] ${doneCombos.size}/${totalCombos} combos already done, ${remaining.length} remaining`);
+
+    if (remaining.length === 0) {
+        return res.json({
+            success: false,
+            message: `All ${totalCombos} niche×city combinations exhausted. Update the config arrays to add new targets.`,
+            status: 'all_exhausted',
+            totalCombos,
+            doneCombos: doneCombos.size,
+        });
+    }
+
+    // Pick randomly from remaining pool
+    const pick = remaining[Math.floor(Math.random() * remaining.length)];
+    const { niche, city } = pick;
 
     const jobSummary = {
         city,
@@ -782,13 +821,18 @@ router.post('/api/pipeline/auto-daily', async (req, res) => {
             log(`Saved ${bRecords.length} leads to Supabase.`);
 
             // Step 3: Queue leads with websites for Jina email extraction
+            const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'lawnlove.com', 'thumbtack.com', 'angi.com', 'homeadvisor.com', 'houzz.com', 'linkedin.com', 'google.com', 'youtube.com'];
             const jinaPayload = bRecords
-                .filter((r: any) => r.website && r.website.length > 5)
-                .filter((r: any) => {
-                    const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'thumbtack.com', 'angi.com'];
-                    return !junkDomains.some(d => r.website.includes(d));
+                .filter((r: any) => r.website && r.website.trim().length > 3)
+                .map((r: any) => {
+                    // Normalize: prepend https:// if missing protocol
+                    let url = r.website.trim();
+                    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                        url = 'https://' + url;
+                    }
+                    return { id: r.id, website: url };
                 })
-                .map((r: any) => ({ id: r.id, website: r.website }));
+                .filter((r: any) => !junkDomains.some(d => r.website.includes(d)));
 
             if (jinaPayload.length > 0) {
                 log(`Queuing ${jinaPayload.length} leads for Jina email extraction...`);

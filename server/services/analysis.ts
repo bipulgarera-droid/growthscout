@@ -375,13 +375,13 @@ export const bulkAnalyze = async (leads: { id: string; url: string; name: string
 };
 
 // Extractor logic for Email extraction via Deterministic Jina AI Scraping + Pure Regex Extraction
-export const extractEmailJina = async (websiteUrl: string): Promise<string | null> => {
+export const extractEmailJina = async (websiteUrl: string): Promise<{ email: string | null, content: string | null }> => {
 
     // Skip URLs that are social media or directory sites
     const junkDomains = ['facebook.com', 'instagram.com', 'twitter.com', 'yelp.com', 'lawnlove.com', 'thumbtack.com', 'angi.com', 'homeadvisor.com', 'houzz.com'];
     if (junkDomains.some(d => websiteUrl.includes(d))) {
         console.log(`[Email Fallback] Skipping directory/social URL: ${websiteUrl}`);
-        return null;
+        return { email: null, content: null };
     }
 
     try {
@@ -489,7 +489,7 @@ export const extractEmailJina = async (websiteUrl: string): Promise<string | nul
                                 .filter(e => !e.includes('sentry') && !e.includes('example.com') && !e.includes('wixpress') && !e.endsWith('.png') && !e.endsWith('.jpg') && !e.endsWith('.css') && !e.endsWith('.js') && e.includes('.') && e.split('@')[1]?.length > 3);
                             if (cleaned.length > 0) {
                                 console.log(`[Email Fallback] Direct HTTP found email for ${websiteUrl}: ${cleaned[0]}`);
-                                return cleaned[0];
+                                return { email: cleaned[0], content: html };
                             }
                         }
                     } catch (_) { /* skip blocked paths */ }
@@ -497,7 +497,7 @@ export const extractEmailJina = async (websiteUrl: string): Promise<string | nul
             } catch (_) { /* skip if URL is unparseable */ }
             
             console.log(`[Email Fallback] Insufficient text and no direct email for ${websiteUrl}.`);
-            return null;
+            return { email: null, content: pageContent || null };
         }
 
 
@@ -508,7 +508,7 @@ export const extractEmailJina = async (websiteUrl: string): Promise<string | nul
 
         if (!matches || matches.length === 0) {
             console.log(`[Email Fallback] No email found via regex on ${websiteUrl}`);
-            return null;
+            return { email: null, content: pageContent };
         }
 
         // Clean up and filter out false positives (e.g., sentry@..., example.com, wixpress)
@@ -525,15 +525,15 @@ export const extractEmailJina = async (websiteUrl: string): Promise<string | nul
                 !e.endsWith('.webp')
             );
 
-        if (uniqueEmails.length === 0) return null;
+        if (uniqueEmails.length === 0) return { email: null, content: pageContent };
 
         // Just return the first matched and cleaned email without external DNS verification
         console.log(`[Email Fallback] Successfully scraped regex email: ${uniqueEmails[0]}`);
-        return uniqueEmails[0];
+        return { email: uniqueEmails[0], content: pageContent };
         
     } catch (e) {
         console.error(`[Email Fallback] Error on ${websiteUrl}:`, e);
-        return null;
+        return { email: null, content: typeof pageContent !== 'undefined' ? pageContent : null };
     }
 };
 

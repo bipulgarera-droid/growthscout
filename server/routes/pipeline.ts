@@ -201,7 +201,7 @@ router.post('/api/pipeline/fallback-email', async (req, res) => {
                     results[lead.id] = null;
                     continue;
                 }
-                const email = await extractEmailJina(lead.website);
+                const { email } = await extractEmailJina(lead.website);
                 results[lead.id] = email;
                 // Polite delay to avoid Jina AI rate limiting on large batches
                 await sleep(600);
@@ -273,7 +273,7 @@ router.post('/api/pipeline/jina-queue', async (req, res) => {
                         continue;
                     }
 
-                    const email = await extractEmailJina(lead.website);
+                    const { email, content } = await extractEmailJina(lead.website);
                     
                     // Persist directly to Supabase
                     // IMPORTANT: serper_searched lives INSIDE audit_data JSONB, NOT as a standalone column
@@ -287,7 +287,11 @@ router.post('/api/pipeline/jina-queue', async (req, res) => {
                         
                         const currentAuditData = existing?.audit_data || {};
                         const patch: any = {
-                            audit_data: { ...currentAuditData, serper_searched: true },
+                            audit_data: { 
+                                ...currentAuditData, 
+                                serper_searched: true,
+                                ...(content ? { website_content: content.slice(0, 50000) } : {}) 
+                            },
                         };
                         if (email && email !== 'NULL') {
                             patch.contact_email = email;
@@ -856,7 +860,7 @@ router.post('/api/pipeline/auto-daily', async (req, res) => {
                     for (const lead of jinaPayload) {
                         try {
                             if (!lead.website) { jinaJob.processed++; continue; }
-                            const email = await extractEmailJina(lead.website);
+                            const { email, content } = await extractEmailJina(lead.website);
                             
                             if (supabase && lead.id) {
                                 const { data: existing } = await supabase
@@ -867,7 +871,11 @@ router.post('/api/pipeline/auto-daily', async (req, res) => {
                                 
                                 const currentAuditData = existing?.audit_data || {};
                                 const patch: any = {
-                                    audit_data: { ...currentAuditData, serper_searched: true },
+                                    audit_data: { 
+                                        ...currentAuditData, 
+                                        serper_searched: true,
+                                        ...(content ? { website_content: content.slice(0, 50000) } : {}) 
+                                    },
                                 };
                                 if (email && email !== 'NULL') {
                                     patch.contact_email = email;

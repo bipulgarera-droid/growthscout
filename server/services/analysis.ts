@@ -402,9 +402,10 @@ export const extractEmailJina = async (websiteUrl: string): Promise<{ email: str
             const cleanBase = urlObj.origin + urlObj.pathname.replace(/\/$/, '');
 
             // Base standard paths, but we will dynamically discover weird ones
-            const contactPaths = new Set(['', '/contact', '/contact-us', '/about', '/about-us']);
+            const contactPaths = new Set(['/contact', '/contact-us']);
+            const aboutPaths = new Set(['/about', '/about-us', '/our-story', '/team', '/who-we-are']);
             
-            // First fetch the homepage via Jina to look for emails AND dynamic contact links
+            // First fetch the homepage via Jina to look for emails AND dynamic contact/about links
             try {
                 const homeResp = await fetch(`https://r.jina.ai/${cleanBase}`, { headers: jinaHeaders });
                 if (homeResp.ok) {
@@ -412,39 +413,41 @@ export const extractEmailJina = async (websiteUrl: string): Promise<{ email: str
                     if (homeText && homeText.length > 20) {
                         pageContent += '\n\n' + homeText;
                         
-                        // Check if email already found on homepage — skip sub-path discovery entirely
-                        if (/[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+/.test(homeText)) {
-                            console.log(`[Email Fallback] Email found on homepage for ${websiteUrl}, skipping sub-paths.`);
-                        } else {
-                            // Extract Markdown links (e.g. [Let's Connect](/reach-out) )
-                            const linkRegex = /\]\(([^)]+)\)/g;
-                            let match;
-                            while ((match = linkRegex.exec(homeText)) !== null) {
-                                const href = match[1].toLowerCase().trim();
-                                if (href.includes('contact') || href.includes('about') || href.includes('connect') || href.includes('reach') || href.includes('hello')) {
-                                    if (href.startsWith('mailto:') || href.startsWith('tel:')) continue;
-                                    
-                                    if (href.startsWith('http')) {
-                                        if (href.includes(urlObj.hostname)) {
-                                            try { contactPaths.add(new URL(href).pathname); } catch(e){}
-                                        }
-                                    } else if (href.startsWith('/')) {
-                                        contactPaths.add(href);
-                                    } else {
-                                        contactPaths.add('/' + href);
-                                    }
+                        // Extract Markdown links (e.g. [Let's Connect](/reach-out) )
+                        const linkRegex = /\]\(([^)]+)\)/g;
+                        let match;
+                        while ((match = linkRegex.exec(homeText)) !== null) {
+                            const href = match[1].toLowerCase().trim();
+                            if (href.startsWith('mailto:') || href.startsWith('tel:')) continue;
+
+                            let parsedRoute = '';
+                            if (href.startsWith('http')) {
+                                if (href.includes(urlObj.hostname)) {
+                                    try { parsedRoute = new URL(href).pathname; } catch(e){}
                                 }
+                            } else if (href.startsWith('/')) {
+                                parsedRoute = href;
+                            } else {
+                                parsedRoute = '/' + href;
+                            }
+
+                            if (!parsedRoute || parsedRoute === '/') continue;
+
+                            if (href.includes('about') || href.includes('story') || href.includes('team') || href.includes('who-we-are') || href.includes('history') || href.includes('mission')) {
+                                aboutPaths.add(parsedRoute);
+                            } else if (href.includes('contact') || href.includes('connect') || href.includes('reach') || href.includes('hello')) {
+                                contactPaths.add(parsedRoute);
                             }
                         }
                     }
                 }
             } catch (_) { /* Skip if homepage totally fails */ }
 
-            // Only traverse sub-paths if we haven't already found an email on the homepage
-            if (!/[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+/.test(pageContent)) {
+            let emailFound = /[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+/.test(pageContent);
+
+            // 1. Only traverse contact paths if we haven't already found an email on the homepage
+            if (!emailFound) {
                 for (const p of Array.from(contactPaths)) {
-                    if (p === '' && pageContent.length > 20) continue;
-                    
                     await sleep(400); // Breathing room between Jina sub-path requests
                     try {
                         const resp = await fetch(`https://r.jina.ai/${cleanBase}${p}`, { headers: jinaHeaders });
@@ -452,11 +455,28 @@ export const extractEmailJina = async (websiteUrl: string): Promise<{ email: str
                             const text = await resp.text();
                             if (text && text.length > 50) {
                                 pageContent += '\n\n' + text;
-                                if (/[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+/.test(text)) break;
+                                emailFound = /[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+/.test(pageContent);
+                                if (emailFound) break; // found it, stop crawling contact pages
                             }
                         }
                     } catch (_) { /* skip failed sub-paths */ }
                 }
+            }
+
+            // 2. ALWAYS traverse one 'About' path strictly to enrich the AI Icebreaker Payload
+            // We only need ONE successful about page fetch, so break immediately if text > 100 chars
+            for (const p of Array.from(aboutPaths)) {
+                await sleep(400);
+                try {
+                    const resp = await fetch(`https://r.jina.ai/${cleanBase}${p}`, { headers: jinaHeaders });
+                    if (resp.ok) {
+                        const text = await resp.text();
+                        if (text && text.length > 100) {
+                            pageContent += '\n\n' + text;
+                            break; // Got the company background story, stop crawling about pages
+                        }
+                    }
+                } catch (_) { /* skip failed about paths */ }
             }
         } catch (e) {
             console.error(`[Email Fallback] Jina Scrape failed for ${websiteUrl}:`, e);

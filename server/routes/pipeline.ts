@@ -204,7 +204,7 @@ router.post('/api/pipeline/fallback-email', async (req, res) => {
                 const { email } = await extractEmailJina(lead.website);
                 results[lead.id] = email;
                 // Polite delay to avoid Jina AI rate limiting on large batches
-                await sleep(200);
+                await sleep(3000);
             } catch (err) {
                 console.error(`Fallback email failed for ${lead.website}:`, err);
                 results[lead.id] = null;
@@ -888,7 +888,7 @@ router.post('/api/pipeline/auto-daily', async (req, res) => {
                             if (jinaJob.processed % 25 === 0) {
                                 log(`Jina progress: ${jinaJob.processed}/${jinaJob.total}, ${jinaJob.found} emails found`);
                             }
-                            await sleep(200);
+                            await sleep(3000);
                         } catch (err) {
                             jinaJob.processed++;
                         }

@@ -393,11 +393,21 @@ export const extractEmailJina = async (websiteUrl: string): Promise<{ email: str
             'X-Retain-Images': 'none',
             'Accept': 'text/plain',
         };
-        if (process.env.JINA_API_KEY) {
-            jinaHeaders['Authorization'] = `Bearer ${process.env.JINA_API_KEY}`;
-        }
-        
         const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+        
+        // Smart rate-limit protection for 20 RPM Free Tier
+        const jinaFetch = async (url: string, retries = 2): Promise<Response> => {
+            for (let i = 0; i < retries; i++) {
+                const resp = await fetch(url, { headers: jinaHeaders });
+                if (resp.status === 429) {
+                    console.log(`[Jina Rate Limit] 429 Too Many Requests. Cooling down for 30 seconds... (Attempt ${i+1}/${retries})`);
+                    await sleep(30000);
+                    continue;
+                }
+                return resp;
+            }
+            return fetch(url, { headers: jinaHeaders });
+        };
         
         let pageContent = '';
         try {
@@ -411,7 +421,7 @@ export const extractEmailJina = async (websiteUrl: string): Promise<{ email: str
             
             // First fetch the homepage via Jina to look for emails AND dynamic contact/about links
             try {
-                const homeResp = await fetch(`https://r.jina.ai/${cleanBase}`, { headers: jinaHeaders });
+                const homeResp = await jinaFetch(`https://r.jina.ai/${cleanBase}`);
                 if (homeResp.ok) {
                     const homeText = await homeResp.text();
                     if (homeText && homeText.length > 20) {
@@ -452,9 +462,9 @@ export const extractEmailJina = async (websiteUrl: string): Promise<{ email: str
             // 1. Only traverse contact paths if we haven't already found an email on the homepage
             if (!emailFound) {
                 for (const p of Array.from(contactPaths)) {
-                    await sleep(100); // Super-fast looping now that we have 500 RPM limit
+                    await sleep(1500); // Respect 20 RPM free limit
                     try {
-                        const resp = await fetch(`https://r.jina.ai/${cleanBase}${p}`, { headers: jinaHeaders });
+                        const resp = await jinaFetch(`https://r.jina.ai/${cleanBase}${p}`);
                         if (resp.ok) {
                             const text = await resp.text();
                             if (text && text.length > 50) {
@@ -470,9 +480,9 @@ export const extractEmailJina = async (websiteUrl: string): Promise<{ email: str
             // 2. ALWAYS traverse one 'About' path strictly to enrich the AI Icebreaker Payload
             // We only need ONE successful about page fetch, so break immediately if text > 100 chars
             for (const p of Array.from(aboutPaths)) {
-                await sleep(100);
+                await sleep(1500); // Respect 20 RPM free limit
                 try {
-                    const resp = await fetch(`https://r.jina.ai/${cleanBase}${p}`, { headers: jinaHeaders });
+                    const resp = await jinaFetch(`https://r.jina.ai/${cleanBase}${p}`);
                     if (resp.ok) {
                         const text = await resp.text();
                         if (text && text.length > 100) {

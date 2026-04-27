@@ -192,10 +192,34 @@ export async function runScrapingPipeline(service: string, city: string, targetC
                             const headers = parseLine(lines[0]).map((h: string) => h.trim().toLowerCase());
                             console.log(`[Pipeline] Parsed headers: ${JSON.stringify(headers)}`);
                             
+                            // Build relevance keywords from the user's search service term
+                            // e.g. "recruiting firms" → ["recruiting", "firms"]
+                            // Also add common synonyms / related categories that Google Maps might use
+                            const serviceWords = service.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+                            
                             for (let i = 1; i < lines.length; i++) {
                                 const values = parseLine(lines[i]);
                                 const record: any = {};
                                 headers.forEach((h: string, idx: number) => { record[h] = values[idx]; });
+                                
+                                // Category relevance filter: reject businesses whose Google Maps
+                                // category has zero overlap with the searched niche
+                                const recordCategory = (record.main_category || record.category || '').toLowerCase();
+                                const recordName = (record.name || record.title || '').toLowerCase();
+                                
+                                if (recordCategory) {
+                                    const isRelevant = serviceWords.some(word => 
+                                        recordCategory.includes(word) || word.includes(recordCategory.split(' ')[0])
+                                    );
+                                    if (!isRelevant) {
+                                        // Last chance: check if the business NAME contains a service keyword
+                                        const nameRelevant = serviceWords.some(word => recordName.includes(word));
+                                        if (!nameRelevant) {
+                                            console.log(`[Pipeline] Filtered out irrelevant: "${record.name}" (category: "${recordCategory}")`);
+                                            continue;
+                                        }
+                                    }
+                                }
                                 
                                 // Prevent duplicate accumulation in same file output
                                 if (!allRecords.find(r => r.place_id === record.place_id)) {

@@ -103,10 +103,5 @@ export const discoverBusinesses = async (params: BusinessSearchParams): Promise<
         }
     });
 
-    const queryKeywords = query.toLowerCase().split(' ');
-    return businesses.filter(b => {
-        if (!b.category) return true;
-        const cat = b.category.toLowerCase();
-        return queryKeywords.some(keyword => cat.includes(keyword));
-    });
+    return businesses;
 };
